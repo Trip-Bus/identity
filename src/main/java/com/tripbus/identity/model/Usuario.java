@@ -52,6 +52,9 @@ public class Usuario {
     @Column(name = "fecha_actualizacion", nullable = false)
     private Instant fechaActualizacion;
 
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
+
     protected Usuario() {
     }
 
@@ -128,5 +131,13 @@ public class Usuario {
 
     public Instant getFechaActualizacion() {
         return fechaActualizacion;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+
+    public void setPasswordChangedAt(Instant passwordChangedAt) {
+        this.passwordChangedAt = passwordChangedAt;
     }
 }

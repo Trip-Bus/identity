@@ -59,4 +59,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("COMPANY_ID_REQUIRED", ex.getMessage()));
     }
+
+    @ExceptionHandler(TokenInvalidoOExpiradoException.class)
+    public ResponseEntity<ErrorResponse> handleTokenInvalidoOExpirado(TokenInvalidoOExpiradoException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("TOKEN_INVALID_OR_EXPIRED", ex.getMessage()));
+    }
 }

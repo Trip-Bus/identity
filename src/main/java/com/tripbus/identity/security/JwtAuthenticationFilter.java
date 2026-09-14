@@ -1,6 +1,8 @@
 package com.tripbus.identity.security;
 
 import com.tripbus.identity.model.RolUsuario;
+import com.tripbus.identity.model.Usuario;
+import com.tripbus.identity.repository.UsuarioRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jws;
@@ -16,6 +18,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,9 +39,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtKeyProvider keyProvider;
+    private final UsuarioRepository usuarioRepository;
 
-    public JwtAuthenticationFilter(JwtKeyProvider keyProvider) {
+    public JwtAuthenticationFilter(JwtKeyProvider keyProvider, UsuarioRepository usuarioRepository) {
         this.keyProvider = keyProvider;
+        this.usuarioRepository = usuarioRepository;
     }
 
     @Override
@@ -67,6 +74,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             RolUsuario rol = RolUsuario.valueOf(claims.get("role", String.class));
             String companyIdClaim = claims.get("companyId", String.class);
             UUID companyId = companyIdClaim != null ? UUID.fromString(companyIdClaim) : null;
+
+            // Invalidación de sesiones previas: esto agrega una consulta a base de
+            // datos por cada request autenticado. Si el volumen de tráfico lo
+            // justifica, se puede optimizar más adelante con un caché de corta
+            // duración (p. ej. el passwordChangedAt por userId, TTL de segundos) —
+            // no se optimiza ahora.
+            Usuario usuario = usuarioRepository.findById(userId).orElse(null);
+            if (usuario == null) {
+                SecurityContextHolder.clearContext();
+                return;
+            }
+
+            Instant passwordChangedAt = usuario.getPasswordChangedAt();
+            if (passwordChangedAt != null) {
+                Date issuedAtDate = claims.getIssuedAt();
+                // El claim "iat" del JWT tiene precisión de SEGUNDOS (NumericDate,
+                // RFC 7519), mientras que passwordChangedAt en BD tiene precisión de
+                // sub-segundo. Comparar con isAfter() estricto rechazaría, por
+                // redondeo, un login legítimo emitido en el mismo segundo del cambio
+                // de contraseña. Por eso se trunca passwordChangedAt al segundo antes
+                // de comparar: solo se rechaza un token emitido ANTES de ese segundo.
+                Instant passwordChangedAtFloor = passwordChangedAt.truncatedTo(ChronoUnit.SECONDS);
+                if (issuedAtDate == null || issuedAtDate.toInstant().isBefore(passwordChangedAtFloor)) {
+                    SecurityContextHolder.clearContext();
+                    return;
+                }
+            }
 
             UsuarioAutenticado principal = new UsuarioAutenticado(userId, rol, companyId);
             List<GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + rol.name()));

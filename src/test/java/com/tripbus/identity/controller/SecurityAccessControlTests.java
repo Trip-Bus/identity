@@ -60,8 +60,18 @@ class SecurityAccessControlTests {
         usuarioObjetivoId = usuarioRepository.findByEmail("objetivo@tripbus.com").orElseThrow().getId();
     }
 
+    // JwtAuthenticationFilter ahora busca al usuario por el "sub" del token (para
+    // verificar passwordChangedAt), así que el id firmado debe corresponder a un
+    // usuario real en BD; un UUID aleatorio sin usuario asociado se rechaza con 401.
     private String tokenPara(RolUsuario rol) {
-        return jwtSigner.sign(UUID.randomUUID(), rol, null, Duration.ofMinutes(5));
+        Usuario usuario = new Usuario(
+                "token-" + rol.name().toLowerCase() + "-" + UUID.randomUUID() + "@tripbus.com",
+                "hash-irrelevante-para-esta-prueba",
+                "DOC-" + UUID.randomUUID(),
+                "Usuario " + rol.name());
+        usuario.setRol(rol);
+        usuario = usuarioRepository.save(usuario);
+        return jwtSigner.sign(usuario.getId(), rol, null, Duration.ofMinutes(5));
     }
 
     @Test

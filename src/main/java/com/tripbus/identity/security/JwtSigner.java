@@ -24,6 +24,10 @@ public class JwtSigner {
         this.defaultTtl = Duration.ofMinutes(defaultExpirationMinutes);
     }
 
+    public Duration getDefaultTtl() {
+        return defaultTtl;
+    }
+
     public String sign(UUID userId, RolUsuario rol, UUID companyId, Duration ttl) {
         Duration effectiveTtl = ttl != null ? ttl : defaultTtl;
         Instant now = Instant.now();

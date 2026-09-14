@@ -55,6 +55,13 @@ public class Usuario {
     protected Usuario() {
     }
 
+    public Usuario(String email, String passwordHash, String documentoIdentidad, String nombre) {
+        this.email = email;
+        this.passwordHash = passwordHash;
+        this.documentoIdentidad = documentoIdentidad;
+        this.nombre = nombre;
+    }
+
     public UUID getId() {
         return id;
     }

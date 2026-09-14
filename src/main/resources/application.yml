@@ -1,1 +1,30 @@
-# TODO: configuración de application.yml
+spring:
+  application:
+    name: identity
+
+  datasource:
+    url: jdbc:postgresql://${DB_URL:localhost}:5432/tripbus_identity
+    username: ${DB_USERNAME:tripbus}
+    password: ${DB_PASSWORD:tripbus_local_pw}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+security:
+  argon2:
+    salt-length: ${ARGON2_SALT_LENGTH:16}
+    hash-length: ${ARGON2_HASH_LENGTH:32}
+    parallelism: ${ARGON2_PARALLELISM:1}
+    memory: ${ARGON2_MEMORY:19456}
+    iterations: ${ARGON2_ITERATIONS:2}
+
+server:
+  port: 16001

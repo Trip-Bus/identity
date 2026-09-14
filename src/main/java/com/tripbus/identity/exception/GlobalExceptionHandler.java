@@ -47,4 +47,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ErrorResponse.of("ACCOUNT_SUSPENDED", ex.getMessage()));
     }
+
+    @ExceptionHandler(UsuarioNoEncontradoException.class)
+    public ResponseEntity<ErrorResponse> handleUsuarioNoEncontrado(UsuarioNoEncontradoException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("USER_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(CompanyIdRequeridoException.class)
+    public ResponseEntity<ErrorResponse> handleCompanyIdRequerido(CompanyIdRequeridoException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("COMPANY_ID_REQUIRED", ex.getMessage()));
+    }
 }

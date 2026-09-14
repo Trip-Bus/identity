@@ -8,6 +8,7 @@ import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -25,7 +26,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// addFilters = false: este slice test no importa SecurityConfig, y con
+// spring-boot-starter-security en el classpath @WebMvcTest activaría por defecto
+// una cadena de seguridad genérica (autenticación requerida). El propósito de esta
+// clase es validar el JSON del JWKS, no las reglas de acceso (eso lo cubre
+// SecurityAccessControlTests con el contexto completo).
 @WebMvcTest(JwksController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import(JwksControllerTests.TestConfig.class)
 class JwksControllerTests {
 

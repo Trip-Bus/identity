@@ -2,8 +2,12 @@ package com.tripbus.identity;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
 
-@SpringBootApplication
+// Excluye el UserDetailsService en memoria por defecto: la autenticación es 100%
+// vía JWT (JwtAuthenticationFilter), no hay httpBasic/formLogin, así que ese
+// usuario generado con contraseña aleatoria en cada arranque nunca se usa.
+@SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 public class IdentityApplication {
 
     public static void main(String[] args) {

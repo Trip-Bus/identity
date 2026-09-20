@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        US-089: ningún log statement de esta aplicación imprime contraseñas, tokens de recuperación
+        completos ni el documento de identidad en texto plano (ver LoggingEmailSender, que solo
+        registra un indicio corto del token). Estos loggers se fuerzan explícitamente por debajo de
+        DEBUG para evitar que, si alguien los habilita accidentalmente, se filtren valores de
+        parámetros SQL vinculados (password_hash, documento_identidad cifrado) en los logs.
+    -->
+    <logger name="org.hibernate.orm.jdbc.bind" level="WARN"/>
+    <logger name="org.hibernate.orm.jdbc.extract" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

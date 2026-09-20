@@ -1,0 +1,12 @@
+# Perfil "production": cifrado en transito exigido (ver SecurityConfig#securityFilterChain) y
+# manejo estricto de credenciales (sin valores por defecto para secretos).
+spring:
+  datasource:
+    # Sin valor por defecto: si DB_PASSWORD no esta definida, el arranque falla de forma explicita
+    # en vez de conectarse silenciosamente con la contrasena de desarrollo local.
+    password: ${DB_PASSWORD}
+
+server:
+  # El contenedor/ingress termina TLS y reenvia con X-Forwarded-Proto; ForwardedHeaderFilter hace
+  # que Spring (y por tanto requiresChannel) vea el esquema real de la peticion original.
+  forward-headers-strategy: framework

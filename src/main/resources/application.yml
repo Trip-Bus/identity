@@ -32,5 +32,10 @@ security:
     key-id: ${JWT_KEY_ID:identity-key-1}
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
 
+  encryption:
+    # Llave maestra AES-256 (base64, 32 bytes) para el cifrado en reposo de datos sensibles
+    # (ver EncryptionKeyProvider). NUNCA se define un valor literal aqui.
+    key: ${IDENTITY_ENCRYPTION_KEY:}
+
 server:
   port: 16001

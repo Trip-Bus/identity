@@ -14,6 +14,9 @@ public class LoggingEmailSender implements EmailSender {
 
     @Override
     public void enviarCorreoRecuperacion(String email, String tokenPlano) {
-        log.info("Enlace de recuperación de contraseña para {}: token={}", email, tokenPlano);
+        // Nunca se imprime el token completo en el log (US-089): solo un indicio corto,
+        // suficiente para depuración local, insuficiente para reutilizar el token.
+        log.info("Enlace de recuperación de contraseña generado para {}: token={}...({} caracteres)",
+                email, tokenPlano.substring(0, Math.min(6, tokenPlano.length())), tokenPlano.length());
     }
 }

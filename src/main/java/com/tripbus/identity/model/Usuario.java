@@ -1,6 +1,8 @@
 package com.tripbus.identity.model;
 
+import com.tripbus.identity.security.DocumentoIdentidadConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -28,7 +30,11 @@ public class Usuario {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Column(name = "documento_identidad", nullable = false, unique = true)
+    // Cifrado en reposo (AES-256-GCM, ver DocumentoIdentidadConverter). El length=255 refleja el
+    // tamano de columna tras el cifrado (nonce + texto cifrado + tag, en base64), no el del
+    // documento en texto plano.
+    @Convert(converter = DocumentoIdentidadConverter.class)
+    @Column(name = "documento_identidad", nullable = false, unique = true, length = 255)
     private String documentoIdentidad;
 
     @Column(nullable = false)

@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: com.tripbus.identity.security.JwtSignerTests
 -------------------------------------------------------------------------------
-Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.568 s -- in com.tripbus.identity.security.JwtSignerTests
+Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.386 s -- in com.tripbus.identity.security.JwtSignerTests

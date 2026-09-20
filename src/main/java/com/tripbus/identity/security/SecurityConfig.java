@@ -51,6 +51,8 @@ public class SecurityConfig {
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)

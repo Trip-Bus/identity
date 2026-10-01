@@ -1,5 +1,6 @@
 package com.tripbus.identity.security;
 
+import com.tripbus.identity.repository.SesionRevocadaRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,16 +18,19 @@ public class SecurityConfig {
 
     private final JwtKeyProvider jwtKeyProvider;
     private final UsuarioRepository usuarioRepository;
+    private final SesionRevocadaRepository sesionRevocadaRepository;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
     public SecurityConfig(
             JwtKeyProvider jwtKeyProvider,
             UsuarioRepository usuarioRepository,
+            SesionRevocadaRepository sesionRevocadaRepository,
             JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
             JwtAccessDeniedHandler jwtAccessDeniedHandler) {
         this.jwtKeyProvider = jwtKeyProvider;
         this.usuarioRepository = usuarioRepository;
+        this.sesionRevocadaRepository = sesionRevocadaRepository;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
     }
@@ -41,13 +45,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info",
+                                "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
                 .addFilterBefore(
-                        new JwtAuthenticationFilter(jwtKeyProvider, usuarioRepository),
+                        new JwtAuthenticationFilter(jwtKeyProvider, usuarioRepository, sesionRevocadaRepository),
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

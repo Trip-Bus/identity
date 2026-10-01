@@ -12,3 +12,7 @@ spring:
 
   flyway:
     enabled: false
+
+tripbus:
+  events:
+    enabled: false

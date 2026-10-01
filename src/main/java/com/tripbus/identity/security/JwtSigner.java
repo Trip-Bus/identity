@@ -34,6 +34,7 @@ public class JwtSigner {
 
         JwtBuilder builder = Jwts.builder()
                 .header().keyId(keyProvider.getKeyId()).and()
+                .id(UUID.randomUUID().toString())
                 .subject(userId.toString())
                 .claim("role", rol.name())
                 .issuedAt(Date.from(now))

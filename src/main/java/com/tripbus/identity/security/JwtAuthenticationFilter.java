@@ -2,6 +2,7 @@ package com.tripbus.identity.security;
 
 import com.tripbus.identity.model.RolUsuario;
 import com.tripbus.identity.model.Usuario;
+import com.tripbus.identity.repository.SesionRevocadaRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -40,10 +41,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtKeyProvider keyProvider;
     private final UsuarioRepository usuarioRepository;
+    private final SesionRevocadaRepository sesionRevocadaRepository;
 
-    public JwtAuthenticationFilter(JwtKeyProvider keyProvider, UsuarioRepository usuarioRepository) {
+    public JwtAuthenticationFilter(
+            JwtKeyProvider keyProvider,
+            UsuarioRepository usuarioRepository,
+            SesionRevocadaRepository sesionRevocadaRepository) {
         this.keyProvider = keyProvider;
         this.usuarioRepository = usuarioRepository;
+        this.sesionRevocadaRepository = sesionRevocadaRepository;
     }
 
     @Override
@@ -70,6 +76,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .parseSignedClaims(token);
 
             Claims claims = parsed.getPayload();
+
+            // US-096: un token cuya sesión se cerró (logout) queda revocado aunque no haya expirado.
+            String jti = claims.getId();
+            if (jti != null && sesionRevocadaRepository.existsById(jti)) {
+                SecurityContextHolder.clearContext();
+                return;
+            }
+
             UUID userId = UUID.fromString(claims.getSubject());
             RolUsuario rol = RolUsuario.valueOf(claims.get("role", String.class));
             String companyIdClaim = claims.get("companyId", String.class);

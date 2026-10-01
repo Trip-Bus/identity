@@ -1,1 +1,94 @@
-# TODO: manifiesto de despliegue en Kubernetes
+# Despliegue en Kubernetes de identity (namespace tripbus).
+# Requiere los recursos compartidos de API-gateway/k8s/infra (ConfigMap, Secret, PostgreSQL, Redis).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+  namespace: tripbus
+  labels:
+    app: identity
+    app.kubernetes.io/part-of: tripbus
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: identity
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: identity
+        app.kubernetes.io/part-of: tripbus
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+        prometheus.io/port: "16001"
+    spec:
+      containers:
+        - name: identity
+          image: ghcr.io/trip-bus/identity:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 16001
+              name: http
+          envFrom:
+            - configMapRef:
+                name: tripbus-config
+            - secretRef:
+                name: tripbus-secrets
+          env:
+            - name: JWT_PRIVATE_KEY_PATH
+              value: /keys/private.pem
+            - name: JWT_PUBLIC_KEY_PATH
+              value: /keys/public.pem
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 640Mi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: jwt-keys
+              mountPath: /keys
+              readOnly: true
+      volumes:
+        - name: jwt-keys
+          secret:
+            secretName: identity-jwt-keys
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity
+  namespace: tripbus
+  labels:
+    app: identity
+spec:
+  selector:
+    app: identity
+  ports:
+    - name: http
+      port: 16001
+      targetPort: http

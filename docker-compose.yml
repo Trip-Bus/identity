@@ -1,0 +1,93 @@
+# Entorno QA de identity SOLO (perfil Spring "qa"): su propia PostgreSQL, Redis con contraseña,
+# llaves JWT generadas una vez y el servicio construido desde este repo.
+#
+#   cp .env.example .env           # valores de QA local (el .env no se sube a git)
+#   docker compose up -d --build   # levantar
+#   docker compose ps              # esperar a que todo esté "healthy"
+#   docker compose logs -f identity
+#   docker compose down            # detener conservando datos (down -v los borra)
+#
+# OJO: no lo corras a la vez que el compose general de API-gateway: usan los mismos puertos
+# (18001, 18100, 18101) y fallaría con "port is already allocated".
+name: tripbus-identity
+
+services:
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tripbus_identity
+      POSTGRES_USER: ${DB_USERNAME:?Falta DB_USERNAME en .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en .env}
+    ports:
+      - "18101:5432"
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?Falta REDIS_PASSWORD en .env}"]
+    environment:
+      # redis-cli lee la contraseña de aquí (así no aparece en la línea de comandos).
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    ports:
+      - "18100:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Contenedor de un solo uso: genera el par RSA de los JWT en el volumen si aún no existe.
+  jwt-keys:
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        if [ ! -f /keys/private.pem ]; then
+          apk add --no-cache openssl > /dev/null &&
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /keys/private.pem &&
+          openssl rsa -in /keys/private.pem -pubout -out /keys/public.pem &&
+          chmod 444 /keys/*.pem && echo "Llaves JWT generadas";
+        else echo "Llaves JWT ya existen"; fi
+    volumes:
+      - jwt-keys:/keys
+
+  identity:
+    build:
+      context: .
+      args:
+        GIT_COMMIT: qa-local
+    image: ghcr.io/trip-bus/identity:qa-local
+    env_file: .env
+    # Estas ganan sobre .env: dentro de Docker se habla con los contenedores por nombre y puerto interno.
+    environment:
+      SPRING_PROFILES_ACTIVE: qa
+      DB_HOST: identity-db
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_PRIVATE_KEY_PATH: /keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /keys/public.pem
+    volumes:
+      - jwt-keys:/keys:ro
+    ports:
+      - "18001:18001"
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jwt-keys:
+        condition: service_completed_successfully
+
+volumes:
+  identity-db-data:
+  redis-data:
+  jwt-keys:

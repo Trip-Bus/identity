@@ -1,0 +1,5 @@
+# Falsos positivos revisados (huella exacta de Gitleaks: commit:archivo:regla:línea).
+# Commit 97ca71b (rama develop) subió por error target/surefire-reports: la línea es el
+# "Using generated security password" que Spring Security imprime con un UUID aleatorio
+# válido solo durante esa corrida de pruebas. No es una credencial real.
+97ca71b9a6674a7cbce3394e28f6d618e708c32b:target/surefire-reports/TEST-com.tripbus.identity.security.JwksControllerTests.xml:generic-api-key:86

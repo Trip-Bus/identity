@@ -1,0 +1,10 @@
+# Perfil "qa": Docker Compose en el computador del desarrollador (activa también "desplegado").
+tripbus:
+  demo-users:
+    enabled: true
+    password: ${DEMO_USERS_PASSWORD}
+  required-env: DB_PASSWORD,REDIS_PASSWORD,JWT_PRIVATE_KEY_PATH,JWT_PUBLIC_KEY_PATH,DEMO_USERS_PASSWORD
+
+logging:
+  level:
+    com.tripbus: DEBUG

@@ -34,11 +34,21 @@
         <jacoco.version>0.8.12</jacoco.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 
-        <!-- SonarQube Cloud: el análisis lo lanza el CI cuando existe el secreto SONAR_TOKEN. -->
+        <!-- SonarQube Cloud: el análisis lo lanza el CI solo en develop (push y PR con base develop)
+             cuando existe el secreto SONAR_TOKEN. El plan Free analiza una única rama. -->
         <sonar.organization>trip-bus</sonar.organization>
         <sonar.projectKey>Trip-Bus_identity</sonar.projectKey>
         <sonar.host.url>https://sonarcloud.io</sonar.host.url>
         <sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <!-- Fuera de la cobertura solo lo que no tiene lógica que probar (se sigue analizando como código):
+             arranque de Spring, records de entrada/salida, entidades JPA (constructores/getters/setters)
+             y la definición del documento OpenAPI. -->
+        <sonar.coverage.exclusions>
+            **/IdentityApplication.java,
+            **/dto/**,
+            **/model/**,
+            **/config/OpenApiConfig.java
+        </sonar.coverage.exclusions>
     </properties>
 
     <dependencies>

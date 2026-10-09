@@ -24,6 +24,36 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 
 **Publica:** `UserRegistered`, `UserLoggedIn` (best effort en Redis Streams).
 
+## Flujo de ramas y entornos
+
+```
+rama de trabajo --PR--> develop (QA) --PR de release--> main (PROD)
+```
+
+- `main` sigue siendo la rama por defecto en GitHub, pero **los PR de trabajo van con base `develop`**.
+- `develop` es QA y `main` es PROD: a `main` solo llega código por un PR de release desde `develop`.
+
+| Evento | Pruebas + Trivy | SonarQube Cloud | Imagen publicada en GHCR |
+|---|---|---|---|
+| PR con base `develop` | ✔ | ✔ (quality gate) | no |
+| push a `develop` (merge de un PR) | ✔ | ✔ (quality gate) | `:qa`, `:develop`, `:sha-<corto>` |
+| PR con base `main` (release) | ✔ | — | no |
+| push a `main` (merge del release) | ✔ | — | `:prod`, `:latest`, `:sha-<corto>` |
+| `workflow_dispatch` | ✔ | solo si se lanza sobre `develop` | no |
+
+**Por qué Sonar solo corre en `develop`:** el plan Free de SonarQube Cloud analiza una única rama,
+y la rama principal del proyecto en Sonar es `develop`. Lo que llega a `main` es exactamente el
+código que ya pasó el quality gate en `develop`, así que en `main` el CI hace `mvn verify` sin Sonar
+y lo indica con un aviso (`::notice::`).
+
+**Cómo hacer un release:**
+
+1. Asegúrate de que el último CI de `develop` esté en verde (pruebas, quality gate y Trivy) y de
+   haber probado la imagen `:qa`.
+2. Abre un PR con base `main` y rama de origen `develop` (título p. ej. `release: <resumen>`).
+3. Cuando el CI del PR pase, haz merge (sin squash, para que `main` y `develop` compartan historial).
+   El push a `main` publica la imagen `:prod` / `:latest`.
+
 ## Entornos (IDE / QA / PROD)
 
 | Entorno | Cómo corre | Perfil Spring | Secretos |
@@ -50,6 +80,19 @@ curl http://localhost:18001/actuator/health
 
 No lo corras a la vez que el compose general de **API-gateway** (usan los mismos puertos).
 `docker compose down` detiene conservando los datos; `down -v` los borra.
+
+### Imágenes Docker (GHCR)
+
+El CI publica `ghcr.io/trip-bus/identity` solo en push (nunca desde un PR):
+
+| Etiqueta | Rama | Uso |
+|---|---|---|
+| `:qa` (y `:develop`) | `develop` | Última versión de QA. |
+| `:prod` (y `:latest`) | `main` | Última versión de PROD; es la que se despliega en el servidor. |
+| `:sha-<corto>` | ambas | Versión inmutable de un commit concreto (para fijar o hacer rollback). |
+
+`docker compose up --build` en tu computador construye la imagen local `identity:qa-local`; para
+usar la de QA ya publicada: `docker pull ghcr.io/trip-bus/identity:qa`.
 
 ### Correr desde el IDE contra QA
 
@@ -133,8 +176,11 @@ corrigen en Spring Framework 7); cada una explica en `statement` por qué se ace
 Spring Boot 4.1. Lo que sí tiene parche nunca se agrega aquí: se corrige subiendo la versión
 (ver las propiedades `*.version` de parches de seguridad en `pom.xml`).
 
-El análisis de Sonar solo corre si el repo tiene el secreto `SONAR_TOKEN`; sin él, el CI hace
-`mvn verify` y deja un aviso. Escaneos locales con Docker:
+El análisis de Sonar solo corre en `develop` (push y PR con base `develop`, ver
+[Flujo de ramas y entornos](#flujo-de-ramas-y-entornos)) y si el repo tiene el secreto `SONAR_TOKEN`;
+en otro caso el CI hace `mvn verify` y deja un aviso. Fuera de la cobertura (`sonar.coverage.exclusions`)
+solo está lo que no tiene lógica que probar: `IdentityApplication`, `dto/**`, `model/**` (entidades JPA)
+y `config/OpenApiConfig`. Escaneos locales con Docker:
 
 ```bash
 docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --redact

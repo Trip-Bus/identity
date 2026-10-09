@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    # random.uuid: cada ApplicationContext de Spring Boot Test recibe su propia base H2 en
+    # memoria. Sin esto, distintos contextos de test comparten la misma BD H2 con nombre fijo
+    # (H2 la comparte por nombre dentro de la JVM) y arrastran filas cifradas con la llave
+    # AES efimera de OTRO contexto, rompiendo el descifrado (ver EncryptionKeyProvider).
+    url: jdbc:h2:mem:identity_test_${random.uuid};MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  flyway:
+    enabled: false

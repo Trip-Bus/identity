@@ -1,3 +1,4 @@
+
 # Entorno QA de identity SOLO (perfil Spring "qa"): su propia PostgreSQL, Redis con contraseña,
 # llaves JWT generadas una vez y el servicio construido desde este repo.
 #
@@ -91,3 +92,26 @@ volumes:
   identity-db-data:
   redis-data:
   jwt-keys:
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: tripbus-identity-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tripbus
+      POSTGRES_PASSWORD: tripbus_local_pw
+      POSTGRES_DB: tripbus_identity
+    ports:
+      - "5432:5432"
+    volumes:
+      - tripbus_identity_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripbus -d tripbus_identity"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  tripbus_identity_pgdata:
+

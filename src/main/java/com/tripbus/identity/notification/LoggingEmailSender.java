@@ -14,10 +14,17 @@ public class LoggingEmailSender implements EmailSender {
 
     @Override
     public void enviarCorreoRecuperacion(String email, String tokenPlano) {
+
         // El token permite cambiar la contraseña: nunca a nivel INFO (PROD). Solo en DEBUG (IDE/QA).
         log.info("Correo de recuperación de contraseña enviado a {}", email);
         if (log.isDebugEnabled()) {
             log.debug("Token de recuperación para {} (solo DEBUG): token={}", email, tokenPlano);
         }
+
+        // Nunca se imprime el token completo en el log (US-089): solo un indicio corto,
+        // suficiente para depuración local, insuficiente para reutilizar el token.
+        log.info("Enlace de recuperación de contraseña generado para {}: token={}...({} caracteres)",
+                email, tokenPlano.substring(0, Math.min(6, tokenPlano.length())), tokenPlano.length());
+
     }
 }

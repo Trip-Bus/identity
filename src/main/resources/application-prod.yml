@@ -1,0 +1,15 @@
+# Perfil "prod": servidor de producción (activa también "desplegado"). Sin usuarios de demostración.
+tripbus:
+  demo-users:
+    enabled: false
+
+logging:
+  level:
+    com.tripbus: INFO
+
+# Swagger/OpenAPI apagado en producción (solo IDE y QA).
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

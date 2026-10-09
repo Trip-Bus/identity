@@ -1,0 +1,13 @@
+# Perfil "desplegado": común a QA y PROD (se activa solo, vía spring.profiles.group en application.yml).
+# Quita los valores por defecto de los secretos que application.yml trae para correr desde el IDE:
+# en un entorno desplegado los secretos SIEMPRE vienen de variables de entorno. Si falta alguna de
+# tripbus.required-env, RequiredSecretsCheck detiene el arranque con un mensaje claro.
+spring:
+  datasource:
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      password: ${REDIS_PASSWORD}
+
+tripbus:
+  required-env: DB_PASSWORD,REDIS_PASSWORD,JWT_PRIVATE_KEY_PATH,JWT_PUBLIC_KEY_PATH

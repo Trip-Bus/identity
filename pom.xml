@@ -34,6 +34,13 @@
         <jacoco.version>0.8.12</jacoco.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 
+        <!-- Mínimos de cobertura total que exige jacoco:check (ver jacoco-maven-plugin).
+             La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.
+             Fijados con la medición del 2026-10-09 redondeada hacia abajo al 5 %: líneas 82,2 % -> 0.80;
+             ramas 68,9 % -> 0.65. -->
+        <jacoco.minimo.lineas>0.80</jacoco.minimo.lineas>
+        <jacoco.minimo.ramas>0.65</jacoco.minimo.ramas>
+
         <!-- SonarQube Cloud: el análisis lo lanza el CI solo en develop (push y PR con base develop)
              cuando existe el secreto SONAR_TOKEN. El plan Free analiza una única rama. -->
         <sonar.organization>trip-bus</sonar.organization>
@@ -42,7 +49,9 @@
         <sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
         <!-- Fuera de la cobertura solo lo que no tiene lógica que probar (se sigue analizando como código):
              arranque de Spring, records de entrada/salida, entidades JPA (constructores/getters/setters)
-             y la definición del documento OpenAPI. -->
+             y la definición del documento OpenAPI. Revisado: nada de dto/** ni model/** tiene lógica
+             (records, un enum y entidades de constructor/getters/setters; el constructor extra de
+             RegistroRequest solo delega). MISMA lista en <excludes> de jacoco-maven-plugin (formato .class). -->
         <sonar.coverage.exclusions>
             **/IdentityApplication.java,
             **/dto/**,
@@ -232,11 +241,23 @@
                 </configuration>
             </plugin>
 
-            <!-- Cobertura: target/site/jacoco/index.html (y jacoco.xml para Sonar). -->
+            <!-- Cobertura: target/site/jacoco/index.html (y jacoco.xml para Sonar).
+                 Además jacoco:check (fase verify) corre en TODAS las ramas, también en main donde no
+                 corre Sonar: rompe el build si la cobertura total baja de jacoco.minimo.lineas/ramas.
+                 La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo. -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
+                <configuration>
+                    <!-- Mismas exclusiones que sonar.coverage.exclusions, para que el % coincida. -->
+                    <excludes>
+                        <exclude>**/IdentityApplication.class</exclude>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/model/**</exclude>
+                        <exclude>**/config/OpenApiConfig.class</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
@@ -250,6 +271,32 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.minimo.lineas}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.minimo.ramas}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

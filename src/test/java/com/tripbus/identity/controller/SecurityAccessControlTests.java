@@ -10,6 +10,8 @@ import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -133,11 +135,37 @@ class SecurityAccessControlTests {
     }
 
     @Test
-    void obtenerUsuarioConCualquierRolAutenticadoDevuelve200() throws Exception {
+    void obtenerElPropioUsuarioDevuelve200() throws Exception {
+        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, Duration.ofMinutes(5));
+
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
-                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.CONDUCTOR)))
+                        .header("Authorization", "Bearer " + tokenPropio))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(usuarioObjetivoId.toString()));
+    }
+
+    @Test
+    void obtenerOtroUsuarioConTokenAdminDevuelve200() throws Exception {
+        mockMvc.perform(get("/users/" + usuarioObjetivoId)
+                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(usuarioObjetivoId.toString()));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RolUsuario.class, names = {"PASAJERO", "CONDUCTOR", "OPERADOR"})
+    void obtenerOtroUsuarioSinSerAdminDevuelve403ConForbidden(RolUsuario rol) throws Exception {
+        mockMvc.perform(get("/users/" + usuarioObjetivoId)
+                        .header("Authorization", "Bearer " + tokenPara(rol)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void obtenerUsuarioInexistenteConTokenAdminDevuelve404() throws Exception {
+        mockMvc.perform(get("/users/" + UUID.randomUUID())
+                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.ADMIN)))
+                .andExpect(status().isNotFound());
     }
 
     @Test

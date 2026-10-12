@@ -1,5 +1,6 @@
 package com.tripbus.identity.dto;
 
+import com.tripbus.identity.util.EmailNormalizer;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -30,6 +31,11 @@ public record RegistroRequest(
         @NotNull(message = "Debe aceptar la política de tratamiento de datos personales")
         @AssertTrue(message = "Debe aceptar la política de tratamiento de datos personales")
         Boolean aceptaPoliticaDatos) {
+
+    /** Se normaliza al construir (antes de @Valid): "Ana@Mail.com " pasa la validación como ana@mail.com. */
+    public RegistroRequest {
+        email = EmailNormalizer.normalizar(email);
+    }
 
     /** Compatibilidad: registro programático en el que la política ya fue aceptada. */
     public RegistroRequest(String email, String password, String documentoIdentidad, String nombre) {

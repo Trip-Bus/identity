@@ -198,4 +198,43 @@ class AuthControllerTests {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
     }
+
+    private String registroJson(String email, String documento) throws Exception {
+        return objectMapper.writeValueAsString(java.util.Map.of(
+                "email", email,
+                "password", "Passw0rd1",
+                "documentoIdentidad", documento,
+                "nombre", "Ana",
+                "aceptaPoliticaDatos", true));
+    }
+
+    @Test
+    void emailSeNormalizaAMinusculasSinEspaciosEnRegistroLoginYDuplicados() throws Exception {
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registroJson("Ana@Mail.com ", "CC-5001")))
+                .andExpect(status().isCreated());
+
+        assertThat(usuarioRepository.findAll()).extracting(Usuario::getEmail).containsExactly("ana@mail.com");
+
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"ana@mail.com\",\"password\":\"Passw0rd1\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\" ANA@MAIL.COM\",\"password\":\"Passw0rd1\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registroJson("aNa@mAIL.cOm", "CC-5002")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("EMAIL_ALREADY_REGISTERED"));
+
+        mockMvc.perform(post("/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\" Ana@MAIL.com \"}"))
+                .andExpect(status().isAccepted());
+    }
 }

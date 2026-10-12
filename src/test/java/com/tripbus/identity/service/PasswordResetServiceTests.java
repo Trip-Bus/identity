@@ -76,6 +76,17 @@ class PasswordResetServiceTests {
     }
 
     @Test
+    void solicitarRecuperacionNormalizaElEmailAMinusculasSinEspacios() {
+        Usuario usuario = mock(Usuario.class);
+        when(usuario.getId()).thenReturn(UUID.randomUUID());
+        when(usuarioRepository.findByEmail("ana@mail.com")).thenReturn(Optional.of(usuario));
+
+        passwordResetService.solicitarRecuperacion("  Ana@Mail.COM ");
+
+        verify(emailSender).enviarCorreoRecuperacion(eq("ana@mail.com"), anyString());
+    }
+
+    @Test
     void solicitarRecuperacionConEmailInexistenteNoCreaTokenNiEnviaCorreo() {
         when(usuarioRepository.findByEmail("noexiste@tripbus.com")).thenReturn(Optional.empty());
 

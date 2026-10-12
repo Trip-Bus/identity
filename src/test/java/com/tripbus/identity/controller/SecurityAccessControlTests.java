@@ -73,7 +73,7 @@ class SecurityAccessControlTests {
                 "Usuario " + rol.name());
         usuario.setRol(rol);
         usuario = usuarioRepository.save(usuario);
-        return jwtSigner.sign(usuario.getId(), rol, null, Duration.ofMinutes(5));
+        return jwtSigner.sign(usuario.getId(), rol, null, usuario.getEmail(), Duration.ofMinutes(5));
     }
 
     @Test
@@ -85,7 +85,7 @@ class SecurityAccessControlTests {
 
     @Test
     void requestConTokenExpiradoDevuelve401ConUnauthenticated() throws Exception {
-        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, Duration.ofMinutes(-5));
+        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, null, Duration.ofMinutes(-5));
 
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
                         .header("Authorization", "Bearer " + tokenExpirado))
@@ -136,7 +136,7 @@ class SecurityAccessControlTests {
 
     @Test
     void obtenerElPropioUsuarioDevuelve200() throws Exception {
-        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, Duration.ofMinutes(5));
+        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, null, Duration.ofMinutes(5));
 
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
                         .header("Authorization", "Bearer " + tokenPropio))

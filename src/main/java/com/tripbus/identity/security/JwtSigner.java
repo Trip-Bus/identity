@@ -28,7 +28,7 @@ public class JwtSigner {
         return defaultTtl;
     }
 
-    public String sign(UUID userId, RolUsuario rol, UUID companyId, Duration ttl) {
+    public String sign(UUID userId, RolUsuario rol, UUID companyId, String email, Duration ttl) {
         Duration effectiveTtl = ttl != null ? ttl : defaultTtl;
         Instant now = Instant.now();
 
@@ -37,6 +37,7 @@ public class JwtSigner {
                 .id(UUID.randomUUID().toString())
                 .subject(userId.toString())
                 .claim("role", rol.name())
+                .claim("email", email)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(effectiveTtl)));
 

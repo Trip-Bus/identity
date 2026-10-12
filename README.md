@@ -22,6 +22,17 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId`. |
 | GET | `/.well-known/jwks.json` | Llave pública: los demás servicios validan los JWT localmente. |
 
+### Claims del token
+
+| Claim | Contenido |
+|---|---|
+| `sub` | Id (UUID) del usuario. |
+| `role` | Rol: `PASAJERO`, `OPERADOR`, `CONDUCTOR` o `ADMIN`. |
+| `companyId` | Empresa del OPERADOR/CONDUCTOR; se omite si el usuario no tiene empresa. |
+| `email` | Correo del usuario tal como está guardado (booking lo usa para enviar el tiquete, US-033). |
+
+Además lleva `jti`, `iat`, `exp` y, en el header, `kid`.
+
 **Publica:** `UserRegistered`, `UserLoggedIn` (best effort en Redis Streams).
 
 ## Flujo de ramas y entornos

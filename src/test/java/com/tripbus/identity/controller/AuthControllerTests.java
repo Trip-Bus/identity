@@ -75,6 +75,7 @@ class AuthControllerTests {
         Jws<Claims> claims = Jwts.parser().verifyWith(publicKey).build().parseSignedClaims(response.accessToken());
         assertThat(claims.getPayload().getSubject()).isEqualTo(response.userId().toString());
         assertThat(claims.getPayload().get("role", String.class)).isEqualTo("PASAJERO");
+        assertThat(claims.getPayload().get("email", String.class)).isEqualTo("nuevo.usuario@tripbus.com");
     }
 
     @Test
@@ -88,11 +89,25 @@ class AuthControllerTests {
 
         LoginRequest login = new LoginRequest("login.usuario@tripbus.com", "Passw0rd1");
 
-        mockMvc.perform(post("/auth/login")
+        MvcResult result = mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(login)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.rol").value("PASAJERO"));
+                .andExpect(jsonPath("$.rol").value("PASAJERO"))
+                .andReturn();
+
+        AuthResponse response =
+                objectMapper.readValue(result.getResponse().getContentAsString(), AuthResponse.class);
+        Claims claims = Jwts.parser().verifyWith(publicKeyDelJwks()).build()
+                .parseSignedClaims(response.accessToken()).getPayload();
+        assertThat(claims.get("email", String.class)).isEqualTo("login.usuario@tripbus.com");
+    }
+
+    private PublicKey publicKeyDelJwks() throws Exception {
+        String jwksBody = mockMvc.perform(get("/.well-known/jwks.json"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return ((RSAKey) JWKSet.parse(jwksBody).getKeys().get(0)).toPublicKey();
     }
 
     @Test

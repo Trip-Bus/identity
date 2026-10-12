@@ -73,7 +73,7 @@ public class AuthService {
     private AuthResponse emitirRespuesta(Usuario usuario) {
         Duration ttl = jwtSigner.getDefaultTtl();
         Instant expiresAt = Instant.now().plus(ttl);
-        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), ttl);
+        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), usuario.getEmail(), ttl);
         return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol());
     }
 }

@@ -64,10 +64,11 @@ class AuthServiceTests {
         Usuario usuarioGuardado = mock(Usuario.class);
         when(usuarioGuardado.getId()).thenReturn(userId);
         when(usuarioGuardado.getRol()).thenReturn(RolUsuario.PASAJERO);
+        when(usuarioGuardado.getEmail()).thenReturn(request.email());
         when(usuarioRepository.save(any(Usuario.class))).thenReturn(usuarioGuardado);
 
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
                 .thenReturn("token-firmado");
 
         AuthResponse response = authService.registrar(request);
@@ -115,11 +116,12 @@ class AuthServiceTests {
         when(usuario.getPasswordHash()).thenReturn("hash-almacenado");
         when(usuario.isActivo()).thenReturn(true);
         when(usuario.getRol()).thenReturn(RolUsuario.PASAJERO);
+        when(usuario.getEmail()).thenReturn(request.email());
 
         when(usuarioRepository.findByEmail(request.email())).thenReturn(Optional.of(usuario));
         when(passwordHasher.matches(request.password(), "hash-almacenado")).thenReturn(true);
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
                 .thenReturn("token-login");
 
         AuthResponse response = authService.login(request);

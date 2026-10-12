@@ -36,10 +36,10 @@
 
         <!-- Mínimos de cobertura total que exige jacoco:check (ver jacoco-maven-plugin).
              La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.
-             Fijados con la medición del 2026-10-09 redondeada hacia abajo al 5 %: líneas 82,2 % -> 0.80;
-             ramas 68,9 % -> 0.65. -->
+             Fijados con la medición del 2026-10-12 redondeada hacia abajo al 5 %: líneas 84,2 % -> 0.80;
+             ramas 73,4 % -> 0.70. -->
         <jacoco.minimo.lineas>0.80</jacoco.minimo.lineas>
-        <jacoco.minimo.ramas>0.65</jacoco.minimo.ramas>
+        <jacoco.minimo.ramas>0.70</jacoco.minimo.ramas>
 
         <!-- SonarQube Cloud: el análisis lo lanza el CI solo en develop (push y PR con base develop)
              cuando existe el secreto SONAR_TOKEN. El plan Free analiza una única rama. -->
@@ -51,7 +51,8 @@
              arranque de Spring, records de entrada/salida, entidades JPA (constructores/getters/setters)
              y la definición del documento OpenAPI. Revisado: nada de dto/** ni model/** tiene lógica
              (records, un enum y entidades de constructor/getters/setters; el constructor extra de
-             RegistroRequest solo delega). MISMA lista en <excludes> de jacoco-maven-plugin (formato .class). -->
+             RegistroRequest solo delega; los constructores compactos de los requests delegan en
+             util/EmailNormalizer, que sí se mide). MISMA lista en <excludes> de jacoco-maven-plugin (formato .class). -->
         <sonar.coverage.exclusions>
             **/IdentityApplication.java,
             **/dto/**,

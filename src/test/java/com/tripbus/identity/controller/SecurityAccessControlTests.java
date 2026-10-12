@@ -183,4 +183,30 @@ class SecurityAccessControlTests {
                                 new LoginRequest("sin.token@tripbus.com", "Passw0rd1"))))
                 .andExpect(status().isOk());
     }
+
+    @Test
+    void tokenVigenteDeUnaCuentaSuspendidaSeRechazaEnEndpointProtegidoYEnValidate() throws Exception {
+        String token = tokenPara(RolUsuario.ADMIN);
+        UUID adminId = usuarioRepository.findAll().stream()
+                .filter(u -> u.getRol() == RolUsuario.ADMIN).findFirst().orElseThrow().getId();
+
+        // Mientras la cuenta está activa el token funciona...
+        mockMvc.perform(get("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        Usuario admin = usuarioRepository.findById(adminId).orElseThrow();
+        admin.setActivo(false);
+        usuarioRepository.save(admin);
+
+        // ...y al suspenderla deja de valer aunque no haya vencido (mismo 403 que el login).
+        mockMvc.perform(get("/users/" + usuarioObjetivoId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+        mockMvc.perform(get("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+        mockMvc.perform(post("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+    }
 }

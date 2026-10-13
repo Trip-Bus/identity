@@ -33,7 +33,24 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 
 Además lleva `jti`, `iat`, `exp` y, en el header, `kid`.
 
-**Publica:** `UserRegistered`, `UserLoggedIn` (best effort en Redis Streams).
+### Eventos que publica identity
+
+Van al stream de Redis `tripbus:events` (`EVENTS_STREAM`). Cada entrada lleva `eventId`, `type`,
+`source=identity`, `occurredAt` y `payload` (JSON). Son *best effort*: si Redis falla se registra un
+WARN y la operación responde igual.
+
+| `type` | Cuándo | `payload` |
+|---|---|---|
+| `UserRegistered` | `POST /auth/register` exitoso. | `userId`, `email`, `role`, `timestamp` |
+| `UserLoggedIn` | `POST /auth/login` exitoso. | `userId`, `timestamp`, `ip` |
+| `SessionRevoked` | `POST /auth/logout` (US-006). | `jti`, `userId` |
+
+Además, en el logout se guarda la clave `tripbus:revoked:{jti}` = `"1"` con TTL igual al tiempo que
+le quedaba al token (mínimo 1 s), para que el Realtime Gateway rechace ese token sin consultar a
+identity. La fuente de verdad sigue siendo la tabla `sesiones_revocadas`.
+
+`EVENTS_ENABLED=false` apaga los eventos y las claves de revocación (toda la integración con Redis).
+Identity no publica `UserSuspended`: hoy no existe ningún flujo que suspenda una cuenta.
 
 ## Flujo de ramas y entornos
 

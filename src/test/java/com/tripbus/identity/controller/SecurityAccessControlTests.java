@@ -10,6 +10,8 @@ import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -71,7 +73,7 @@ class SecurityAccessControlTests {
                 "Usuario " + rol.name());
         usuario.setRol(rol);
         usuario = usuarioRepository.save(usuario);
-        return jwtSigner.sign(usuario.getId(), rol, null, Duration.ofMinutes(5));
+        return jwtSigner.sign(usuario.getId(), rol, null, usuario.getEmail(), Duration.ofMinutes(5));
     }
 
     @Test
@@ -83,7 +85,7 @@ class SecurityAccessControlTests {
 
     @Test
     void requestConTokenExpiradoDevuelve401ConUnauthenticated() throws Exception {
-        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, Duration.ofMinutes(-5));
+        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, null, Duration.ofMinutes(-5));
 
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
                         .header("Authorization", "Bearer " + tokenExpirado))
@@ -133,11 +135,37 @@ class SecurityAccessControlTests {
     }
 
     @Test
-    void obtenerUsuarioConCualquierRolAutenticadoDevuelve200() throws Exception {
+    void obtenerElPropioUsuarioDevuelve200() throws Exception {
+        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, null, Duration.ofMinutes(5));
+
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
-                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.CONDUCTOR)))
+                        .header("Authorization", "Bearer " + tokenPropio))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(usuarioObjetivoId.toString()));
+    }
+
+    @Test
+    void obtenerOtroUsuarioConTokenAdminDevuelve200() throws Exception {
+        mockMvc.perform(get("/users/" + usuarioObjetivoId)
+                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(usuarioObjetivoId.toString()));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RolUsuario.class, names = {"PASAJERO", "CONDUCTOR", "OPERADOR"})
+    void obtenerOtroUsuarioSinSerAdminDevuelve403ConForbidden(RolUsuario rol) throws Exception {
+        mockMvc.perform(get("/users/" + usuarioObjetivoId)
+                        .header("Authorization", "Bearer " + tokenPara(rol)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void obtenerUsuarioInexistenteConTokenAdminDevuelve404() throws Exception {
+        mockMvc.perform(get("/users/" + UUID.randomUUID())
+                        .header("Authorization", "Bearer " + tokenPara(RolUsuario.ADMIN)))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -154,5 +182,31 @@ class SecurityAccessControlTests {
                         .content(objectMapper.writeValueAsString(
                                 new LoginRequest("sin.token@tripbus.com", "Passw0rd1"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void tokenVigenteDeUnaCuentaSuspendidaSeRechazaEnEndpointProtegidoYEnValidate() throws Exception {
+        String token = tokenPara(RolUsuario.ADMIN);
+        UUID adminId = usuarioRepository.findAll().stream()
+                .filter(u -> u.getRol() == RolUsuario.ADMIN).findFirst().orElseThrow().getId();
+
+        // Mientras la cuenta está activa el token funciona...
+        mockMvc.perform(get("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        Usuario admin = usuarioRepository.findById(adminId).orElseThrow();
+        admin.setActivo(false);
+        usuarioRepository.save(admin);
+
+        // ...y al suspenderla deja de valer aunque no haya vencido (mismo 403 que el login).
+        mockMvc.perform(get("/users/" + usuarioObjetivoId).header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+        mockMvc.perform(get("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
+        mockMvc.perform(post("/auth/validate").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("ACCOUNT_SUSPENDED"));
     }
 }

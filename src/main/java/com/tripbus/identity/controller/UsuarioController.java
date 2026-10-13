@@ -3,6 +3,7 @@ package com.tripbus.identity.controller;
 import com.tripbus.identity.dto.CambiarRolRequest;
 import com.tripbus.identity.dto.RolesResponse;
 import com.tripbus.identity.dto.UsuarioResponse;
+import com.tripbus.identity.model.RolUsuario;
 import com.tripbus.identity.security.UsuarioAutenticado;
 import com.tripbus.identity.service.UsuarioService;
 import jakarta.validation.Valid;
@@ -30,8 +31,11 @@ public class UsuarioController {
         this.usuarioService = usuarioService;
     }
 
+    /** Datos del usuario (US-005). Solo el propio usuario o un administrador. */
     @GetMapping("/{id}")
-    public ResponseEntity<UsuarioResponse> obtener(@PathVariable UUID id) {
+    public ResponseEntity<UsuarioResponse> obtener(@PathVariable UUID id,
+                                                   @AuthenticationPrincipal UsuarioAutenticado actual) {
+        exigirPropioOAdmin(id, actual, "Solo puede consultar sus propios datos");
         return ResponseEntity.ok(usuarioService.obtenerPorId(id));
     }
 
@@ -39,9 +43,7 @@ public class UsuarioController {
     @GetMapping("/{id}/roles")
     public ResponseEntity<RolesResponse> roles(@PathVariable UUID id,
                                                @AuthenticationPrincipal UsuarioAutenticado actual) {
-        if (!actual.userId().equals(id) && actual.rol() != com.tripbus.identity.model.RolUsuario.ADMIN) {
-            throw new AccessDeniedException("Solo puede consultar sus propios roles");
-        }
+        exigirPropioOAdmin(id, actual, "Solo puede consultar sus propios roles");
         return ResponseEntity.ok(new RolesResponse(id, List.of(usuarioService.obtenerPorId(id).rol())));
     }
 
@@ -50,5 +52,11 @@ public class UsuarioController {
     public ResponseEntity<UsuarioResponse> cambiarRol(
             @PathVariable UUID id, @Valid @RequestBody CambiarRolRequest request) {
         return ResponseEntity.ok(usuarioService.cambiarRol(id, request));
+    }
+
+    private static void exigirPropioOAdmin(UUID id, UsuarioAutenticado actual, String mensaje) {
+        if (!actual.userId().equals(id) && actual.rol() != RolUsuario.ADMIN) {
+            throw new AccessDeniedException(mensaje);
+        }
     }
 }

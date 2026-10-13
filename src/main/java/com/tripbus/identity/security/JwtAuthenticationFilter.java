@@ -39,6 +39,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
+    /** Atributo de request que indica que el token es de una cuenta suspendida. */
+    public static final String ATRIBUTO_CUENTA_SUSPENDIDA = JwtAuthenticationFilter.class.getName() + ".CUENTA_SUSPENDIDA";
+
     private final JwtKeyProvider keyProvider;
     private final UsuarioRepository usuarioRepository;
     private final SesionRevocadaRepository sesionRevocadaRepository;
@@ -62,13 +65,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (authorizationHeader != null && authorizationHeader.startsWith(BEARER_PREFIX)) {
             String token = authorizationHeader.substring(BEARER_PREFIX.length());
-            autenticar(token);
+            autenticar(token, request);
         }
 
         filterChain.doFilter(request, response);
     }
 
-    private void autenticar(String token) {
+    private void autenticar(String token, HttpServletRequest request) {
         try {
             Jws<Claims> parsed = Jwts.parser()
                     .verifyWith(keyProvider.getPublicKey())
@@ -96,6 +99,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // no se optimiza ahora.
             Usuario usuario = usuarioRepository.findById(userId).orElse(null);
             if (usuario == null) {
+                SecurityContextHolder.clearContext();
+                return;
+            }
+
+            // Cuenta suspendida: su token deja de valer aunque no haya vencido. Se reutiliza el
+            // usuario ya cargado (sin consulta extra) y se marca la request para que el
+            // AuthenticationEntryPoint responda 403 ACCOUNT_SUSPENDED, igual que el login.
+            if (!usuario.isActivo()) {
+                request.setAttribute(ATRIBUTO_CUENTA_SUSPENDIDA, Boolean.TRUE);
                 SecurityContextHolder.clearContext();
                 return;
             }

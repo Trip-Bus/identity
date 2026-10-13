@@ -75,7 +75,7 @@ class JwksControllerTests {
         JwtSigner jwtSigner = new JwtSigner(keyProvider, 60);
         UUID userId = UUID.randomUUID();
 
-        String token = jwtSigner.sign(userId, RolUsuario.CONDUCTOR, null, Duration.ofMinutes(5));
+        String token = jwtSigner.sign(userId, RolUsuario.CONDUCTOR, null, null, Duration.ofMinutes(5));
 
         String body = mockMvc.perform(get(JWKS_PATH))
                 .andReturn().getResponse().getContentAsString();

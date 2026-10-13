@@ -22,7 +22,49 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId`. |
 | GET | `/.well-known/jwks.json` | Llave pública: los demás servicios validan los JWT localmente. |
 
+### Claims del token
+
+| Claim | Contenido |
+|---|---|
+| `sub` | Id (UUID) del usuario. |
+| `role` | Rol: `PASAJERO`, `OPERADOR`, `CONDUCTOR` o `ADMIN`. |
+| `companyId` | Empresa del OPERADOR/CONDUCTOR; se omite si el usuario no tiene empresa. |
+| `email` | Correo del usuario tal como está guardado (booking lo usa para enviar el tiquete, US-033). |
+
+Además lleva `jti`, `iat`, `exp` y, en el header, `kid`.
+
 **Publica:** `UserRegistered`, `UserLoggedIn` (best effort en Redis Streams).
+
+## Flujo de ramas y entornos
+
+```
+rama de trabajo --PR--> develop (QA) --PR de release--> main (PROD)
+```
+
+- `main` sigue siendo la rama por defecto en GitHub, pero **los PR de trabajo van con base `develop`**.
+- `develop` es QA y `main` es PROD: a `main` solo llega código por un PR de release desde `develop`.
+
+| Evento | Pruebas + JaCoCo + Trivy | SonarQube Cloud | Imagen publicada en GHCR |
+|---|---|---|---|
+| PR con base `develop` | ✔ | ✔ (quality gate) | no |
+| push a `develop` (merge de un PR) | ✔ | ✔ (quality gate) | `:qa`, `:develop`, `:sha-<corto>` |
+| PR con base `main` (release) | ✔ | — | no |
+| push a `main` (merge del release) | ✔ | — | `:prod`, `:latest`, `:sha-<corto>` |
+| `workflow_dispatch` | ✔ | solo si se lanza sobre `develop` | no |
+
+**Por qué Sonar solo corre en `develop`:** el plan Free de SonarQube Cloud analiza una única rama,
+y la rama principal del proyecto en Sonar es `develop`. Lo que llega a `main` es exactamente el
+código que ya pasó el quality gate en `develop`, así que en `main` el CI hace `mvn verify` sin Sonar
+y lo indica con un aviso (`::notice::`). El control de cobertura de JaCoCo (`jacoco:check`) sí corre
+en todas las ramas.
+
+**Cómo hacer un release:**
+
+1. Asegúrate de que el último CI de `develop` esté en verde (pruebas, quality gate y Trivy) y de
+   haber probado la imagen `:qa`.
+2. Abre un PR con base `main` y rama de origen `develop` (título p. ej. `release: <resumen>`).
+3. Cuando el CI del PR pase, haz merge (sin squash, para que `main` y `develop` compartan historial).
+   El push a `main` publica la imagen `:prod` / `:latest`.
 
 ## Entornos (IDE / QA / PROD)
 
@@ -50,6 +92,19 @@ curl http://localhost:18001/actuator/health
 
 No lo corras a la vez que el compose general de **API-gateway** (usan los mismos puertos).
 `docker compose down` detiene conservando los datos; `down -v` los borra.
+
+### Imágenes Docker (GHCR)
+
+El CI publica `ghcr.io/trip-bus/identity` solo en push (nunca desde un PR):
+
+| Etiqueta | Rama | Uso |
+|---|---|---|
+| `:qa` (y `:develop`) | `develop` | Última versión de QA. |
+| `:prod` (y `:latest`) | `main` | Última versión de PROD; es la que se despliega en el servidor. |
+| `:sha-<corto>` | ambas | Versión inmutable de un commit concreto (para fijar o hacer rollback). |
+
+`docker compose up --build` en tu computador construye la imagen local `identity:qa-local`; para
+usar la de QA ya publicada: `docker pull ghcr.io/trip-bus/identity:qa`.
 
 ### Correr desde el IDE contra QA
 
@@ -119,10 +174,29 @@ Toda la plataforma: ver el README de **API-gateway**.
 
 | Herramienta | Qué revisa | Dónde |
 |---|---|---|
-| JaCoCo | Cobertura de las pruebas | local: `target/site/jacoco/index.html` (tras `mvn verify`); CI: artifact `jacoco` |
+| JaCoCo | Cobertura de las pruebas y **mínimo obligatorio** (`jacoco:check`) | local: `target/site/jacoco/index.html` (tras `mvn verify`); CI: tabla en el resumen de cada ejecución y artifact `jacoco` |
 | SonarQube Cloud | Bugs, code smells y cobertura; quality gate "Sonar way" (código nuevo ≥ 80 %) | proyecto `Trip-Bus_identity` de la organización `trip-bus` |
 | Gitleaks | Secretos en todo el historial git | job `secretos` del CI (falsos positivos revisados en `.gitleaksignore`) |
 | Trivy | Vulnerabilidades CRITICAL/HIGH con corrección disponible en la imagen Docker | job `docker` del CI |
+
+### Cobertura mínima (JaCoCo)
+
+`mvn verify` falla si la cobertura total baja de los mínimos del `pom.xml`, en **todas** las ramas
+(también en `main`, donde Sonar no corre):
+
+| Métrica | Medido (2026-10-09) | Mínimo |
+|---|---|---|
+| Líneas | 82 % | `jacoco.minimo.lineas` = 0.80 |
+| Ramas | 68 % | `jacoco.minimo.ramas` = 0.65 |
+
+**La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.** Corre `mvn verify`, mira
+el total en `target/site/jacoco/index.html` (o la tabla del CI), redondéalo hacia abajo al 5 % y
+actualiza la propiedad en el pom en el mismo PR. Las mejores candidatas para subir ramas son
+`JwtKeyProvider`, `SesionService` y `JwtAuthenticationFilter`.
+
+Fuera de la cobertura (mismas en `sonar.coverage.exclusions` y en los `<excludes>` de JaCoCo) solo
+está lo que no tiene lógica que probar: `IdentityApplication`, `dto/**` (records), `model/**`
+(entidades JPA de constructor/getters/setters y el enum `RolUsuario`) y `config/OpenApiConfig`.
 
 ### Vulnerabilidades aceptadas (`.trivyignore.yaml`)
 
@@ -133,11 +207,32 @@ corrigen en Spring Framework 7); cada una explica en `statement` por qué se ace
 Spring Boot 4.1. Lo que sí tiene parche nunca se agrega aquí: se corrige subiendo la versión
 (ver las propiedades `*.version` de parches de seguridad en `pom.xml`).
 
-El análisis de Sonar solo corre si el repo tiene el secreto `SONAR_TOKEN`; sin él, el CI hace
-`mvn verify` y deja un aviso. Escaneos locales con Docker:
+El análisis de Sonar solo corre en `develop` (push y PR con base `develop`, ver
+[Flujo de ramas y entornos](#flujo-de-ramas-y-entornos)) y si el repo tiene el secreto `SONAR_TOKEN`;
+en otro caso el CI hace `mvn verify` y deja un aviso.
+
+### Secretos del CI (`SONAR_TOKEN`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`)
+
+Se crean en Settings → Secrets and variables → Actions:
+
+| Secreto | Valor | Si falta |
+|---|---|---|
+| `SONAR_TOKEN` | Token de SonarQube Cloud de la organización `trip-bus` | el CI hace `mvn verify` sin Sonar y deja un aviso |
+| `DOCKERHUB_USERNAME` | Usuario de Docker Hub | descarga sin autenticar (ver abajo) |
+| `DOCKERHUB_TOKEN` | Personal access token con permiso **Public Repo Read-only** (solo lectura; nunca la contraseña) | descarga sin autenticar (ver abajo) |
+
+Los runners de GitHub comparten IP y agotan el límite de descargas anónimas de Docker Hub
+(`toomanyrequests: You have reached your unauthenticated pull rate limit`), lo que rompe
+Testcontainers (`postgres:16-alpine`) y el build de la imagen (`maven`, `eclipse-temurin`).
+Con los secretos de Docker Hub los jobs `secretos`, `build-test` y `docker` inician sesión antes de
+descargar nada y usan el límite de una cuenta autenticada. Son **opcionales pero recomendados**: si
+faltan, el CI descarga sin autenticar, deja un aviso y puede fallar por el límite. Gitleaks se
+descarga desde GHCR (`ghcr.io/gitleaks/gitleaks`), que no tiene ese límite.
+
+Escaneos locales con Docker:
 
 ```bash
-docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --redact
+docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact
 docker build -t identity:local . && \
   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" aquasec/trivy:0.70.0 \
   image --severity CRITICAL,HIGH --ignore-unfixed --ignorefile /src/.trivyignore.yaml identity:local

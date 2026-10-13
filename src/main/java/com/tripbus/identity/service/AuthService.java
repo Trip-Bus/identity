@@ -11,11 +11,14 @@ import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import com.tripbus.identity.security.PasswordHasher;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 
 @Service
 public class AuthService {
@@ -47,9 +50,39 @@ public class AuthService {
 
         String passwordHash = passwordHasher.hash(request.password());
         Usuario usuario = new Usuario(request.email(), passwordHash, request.documentoIdentidad(), request.nombre());
-        usuario = usuarioRepository.save(usuario);
+        try {
+            // saveAndFlush: el INSERT se ejecuta aquí y no al confirmar, para poder traducir el choque.
+            usuario = usuarioRepository.saveAndFlush(usuario);
+        } catch (DataIntegrityViolationException ex) {
+            // Registro concurrente: otra petición con el mismo email/documento pasó la verificación
+            // de arriba al mismo tiempo y el índice único de la BD rechazó esta. Se responde 409 con
+            // el mismo código que el duplicado normal en vez de un 500.
+            throw traducirConflicto(ex);
+        }
 
         return emitirRespuesta(usuario);
+    }
+
+    private static RuntimeException traducirConflicto(DataIntegrityViolationException ex) {
+        String restriccion = nombreRestriccion(ex);
+        if (restriccion.contains("email")) {
+            return new EmailYaRegistradoException();
+        }
+        if (restriccion.contains("documento")) {
+            return new DocumentoYaRegistradoException();
+        }
+        return ex;
+    }
+
+    /** Nombre del índice/constraint que falló (uq_usuarios_email_lower, uq_usuarios_documento_identidad). */
+    private static String nombreRestriccion(DataIntegrityViolationException ex) {
+        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
+            if (causa instanceof ConstraintViolationException cve && cve.getConstraintName() != null) {
+                return cve.getConstraintName().toLowerCase(Locale.ROOT);
+            }
+        }
+        String mensaje = ex.getMostSpecificCause().getMessage();
+        return mensaje != null ? mensaje.toLowerCase(Locale.ROOT) : "";
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -73,7 +106,7 @@ public class AuthService {
     private AuthResponse emitirRespuesta(Usuario usuario) {
         Duration ttl = jwtSigner.getDefaultTtl();
         Instant expiresAt = Instant.now().plus(ttl);
-        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), ttl);
+        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), usuario.getEmail(), ttl);
         return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol());
     }
 }

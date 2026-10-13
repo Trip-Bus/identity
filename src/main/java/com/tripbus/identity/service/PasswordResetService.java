@@ -7,6 +7,7 @@ import com.tripbus.identity.notification.EmailSender;
 import com.tripbus.identity.repository.PasswordResetTokenRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.PasswordHasher;
+import com.tripbus.identity.util.EmailNormalizer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,7 +44,8 @@ public class PasswordResetService {
     }
 
     @Transactional
-    public void solicitarRecuperacion(String email) {
+    public void solicitarRecuperacion(String emailRecibido) {
+        String email = EmailNormalizer.normalizar(emailRecibido);
         // Decisión de seguridad: si el email no existe, se retorna en silencio (sin
         // crear token ni lanzar excepción), para que el controlador responda EXACTAMENTE
         // igual en ambos casos y este endpoint no sirva para enumerar cuentas.

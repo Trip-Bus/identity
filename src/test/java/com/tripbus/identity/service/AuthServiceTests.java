@@ -12,13 +12,16 @@ import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import com.tripbus.identity.security.PasswordHasher;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,10 +67,11 @@ class AuthServiceTests {
         Usuario usuarioGuardado = mock(Usuario.class);
         when(usuarioGuardado.getId()).thenReturn(userId);
         when(usuarioGuardado.getRol()).thenReturn(RolUsuario.PASAJERO);
-        when(usuarioRepository.save(any(Usuario.class))).thenReturn(usuarioGuardado);
+        when(usuarioGuardado.getEmail()).thenReturn(request.email());
+        when(usuarioRepository.saveAndFlush(any(Usuario.class))).thenReturn(usuarioGuardado);
 
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
                 .thenReturn("token-firmado");
 
         AuthResponse response = authService.registrar(request);
@@ -77,7 +81,7 @@ class AuthServiceTests {
         assertThat(response.rol()).isEqualTo(RolUsuario.PASAJERO);
 
         ArgumentCaptor<Usuario> usuarioCaptor = ArgumentCaptor.forClass(Usuario.class);
-        verify(usuarioRepository).save(usuarioCaptor.capture());
+        verify(usuarioRepository).saveAndFlush(usuarioCaptor.capture());
         assertThat(usuarioCaptor.getValue().getRol()).isEqualTo(RolUsuario.PASAJERO);
         assertThat(usuarioCaptor.getValue().getPasswordHash()).isEqualTo("hash-argon2id");
     }
@@ -90,7 +94,7 @@ class AuthServiceTests {
         assertThatThrownBy(() -> authService.registrar(request))
                 .isInstanceOf(EmailYaRegistradoException.class);
 
-        verify(usuarioRepository, never()).save(any());
+        verify(usuarioRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -102,7 +106,57 @@ class AuthServiceTests {
         assertThatThrownBy(() -> authService.registrar(request))
                 .isInstanceOf(DocumentoYaRegistradoException.class);
 
-        verify(usuarioRepository, never()).save(any());
+        verify(usuarioRepository, never()).saveAndFlush(any());
+    }
+
+    private RegistroRequest prepararChoqueConcurrente(Throwable causa) {
+        RegistroRequest request = new RegistroRequest("carrera@tripbus.com", "Passw0rd!", "CC-777", "Carrera");
+        when(usuarioRepository.existsByEmail(request.email())).thenReturn(false);
+        when(usuarioRepository.existsByDocumentoIdentidad(request.documentoIdentidad())).thenReturn(false);
+        when(passwordHasher.hash(request.password())).thenReturn("hash");
+        when(usuarioRepository.saveAndFlush(any(Usuario.class)))
+                .thenThrow(new DataIntegrityViolationException("could not execute statement", causa));
+        return request;
+    }
+
+    @Test
+    void registroConcurrenteQueChocaConElIndiceDeEmailLanzaEmailYaRegistrado() {
+        RegistroRequest request = prepararChoqueConcurrente(new ConstraintViolationException(
+                "duplicate key", new SQLException("duplicate key"), "uq_usuarios_email_lower"));
+
+        assertThatThrownBy(() -> authService.registrar(request)).isInstanceOf(EmailYaRegistradoException.class);
+    }
+
+    @Test
+    void registroConcurrenteQueChocaConElIndiceDeDocumentoLanzaDocumentoYaRegistrado() {
+        RegistroRequest request = prepararChoqueConcurrente(new ConstraintViolationException(
+                "duplicate key", new SQLException("duplicate key"), "UQ_USUARIOS_DOCUMENTO_IDENTIDAD"));
+
+        assertThatThrownBy(() -> authService.registrar(request)).isInstanceOf(DocumentoYaRegistradoException.class);
+    }
+
+    @Test
+    void registroConcurrenteSinNombreDeRestriccionUsaElMensajeDeLaCausa() {
+        RegistroRequest request = prepararChoqueConcurrente(
+                new SQLException("duplicate key value violates unique constraint \"uq_usuarios_email_lower\""));
+
+        assertThatThrownBy(() -> authService.registrar(request)).isInstanceOf(EmailYaRegistradoException.class);
+    }
+
+    @Test
+    void violacionDeIntegridadAjenaAEmailYDocumentoSePropagaSinTraducir() {
+        RegistroRequest request = prepararChoqueConcurrente(new SQLException((String) null));
+
+        assertThatThrownBy(() -> authService.registrar(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void registroYLoginNormalizanElEmailAMinusculasSinEspacios() {
+        assertThat(new RegistroRequest("  Ana@Mail.COM ", "Passw0rd!", "CC-1", "Ana").email())
+                .isEqualTo("ana@mail.com");
+        assertThat(new LoginRequest("ANA@mail.com ", "x").email()).isEqualTo("ana@mail.com");
+        assertThat(new LoginRequest(null, "x").email()).isNull();
     }
 
     @Test
@@ -115,11 +169,12 @@ class AuthServiceTests {
         when(usuario.getPasswordHash()).thenReturn("hash-almacenado");
         when(usuario.isActivo()).thenReturn(true);
         when(usuario.getRol()).thenReturn(RolUsuario.PASAJERO);
+        when(usuario.getEmail()).thenReturn(request.email());
 
         when(usuarioRepository.findByEmail(request.email())).thenReturn(Optional.of(usuario));
         when(passwordHasher.matches(request.password(), "hash-almacenado")).thenReturn(true);
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
                 .thenReturn("token-login");
 
         AuthResponse response = authService.login(request);

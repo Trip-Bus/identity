@@ -1,5 +1,6 @@
 package com.tripbus.identity.dto;
 
+import com.tripbus.identity.util.EmailNormalizer;
 import jakarta.validation.constraints.NotBlank;
 
 public record LoginRequest(
@@ -9,4 +10,8 @@ public record LoginRequest(
 
         @NotBlank(message = "La contraseña es obligatoria")
         String password) {
+
+    public LoginRequest {
+        email = EmailNormalizer.normalizar(email);
+    }
 }

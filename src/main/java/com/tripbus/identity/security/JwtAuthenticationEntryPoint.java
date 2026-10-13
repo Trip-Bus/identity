@@ -1,6 +1,7 @@
 package com.tripbus.identity.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tripbus.identity.exception.CuentaSuspendidaException;
 import com.tripbus.identity.exception.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -26,10 +27,19 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
             HttpServletRequest request,
             HttpServletResponse response,
             AuthenticationException authException) throws IOException {
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
+        boolean cuentaSuspendida =
+                Boolean.TRUE.equals(request.getAttribute(JwtAuthenticationFilter.ATRIBUTO_CUENTA_SUSPENDIDA));
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        ErrorResponse body = ErrorResponse.of(
-                "UNAUTHENTICATED", "Se requiere un token de acceso válido para acceder a este recurso");
+        ErrorResponse body;
+        if (cuentaSuspendida) {
+            // Mismo status y código que el login de una cuenta suspendida (GlobalExceptionHandler).
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+            body = ErrorResponse.of("ACCOUNT_SUSPENDED", new CuentaSuspendidaException().getMessage());
+        } else {
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+            body = ErrorResponse.of(
+                    "UNAUTHENTICATED", "Se requiere un token de acceso válido para acceder a este recurso");
+        }
         objectMapper.writeValue(response.getWriter(), body);
     }
 }

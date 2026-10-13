@@ -61,7 +61,7 @@ management:
       probes:
         enabled: true
   health:
-    # Redis solo se usa para publicar eventos (best effort): no debe tumbar el readiness.
+    # Redis solo se usa para eventos y claves de revocación (best effort): no debe tumbar el readiness.
     redis:
       enabled: false
   metrics:

@@ -1,5 +1,6 @@
 package com.tripbus.identity.service;
 
+import com.tripbus.identity.events.RevocacionTokenPublisher;
 import com.tripbus.identity.model.Consentimiento;
 import com.tripbus.identity.model.SesionRevocada;
 import com.tripbus.identity.repository.ConsentimientoRepository;
@@ -28,13 +29,16 @@ public class SesionService {
     private final SesionRevocadaRepository sesionRevocadaRepository;
     private final ConsentimientoRepository consentimientoRepository;
     private final JwtKeyProvider keyProvider;
+    private final RevocacionTokenPublisher revocacionPublisher;
 
     public SesionService(SesionRevocadaRepository sesionRevocadaRepository,
                          ConsentimientoRepository consentimientoRepository,
-                         JwtKeyProvider keyProvider) {
+                         JwtKeyProvider keyProvider,
+                         RevocacionTokenPublisher revocacionPublisher) {
         this.sesionRevocadaRepository = sesionRevocadaRepository;
         this.consentimientoRepository = consentimientoRepository;
         this.keyProvider = keyProvider;
+        this.revocacionPublisher = revocacionPublisher;
     }
 
     /** Revoca el token actual: deja de ser aceptado aunque aún no haya expirado. */
@@ -47,7 +51,10 @@ public class SesionService {
             return;
         }
         Instant expira = claims.getExpiration() != null ? claims.getExpiration().toInstant() : Instant.now();
-        sesionRevocadaRepository.save(new SesionRevocada(jti, UUID.fromString(claims.getSubject()), Instant.now(), expira));
+        UUID userId = UUID.fromString(claims.getSubject());
+        sesionRevocadaRepository.save(new SesionRevocada(jti, userId, Instant.now(), expira));
+        // US-006: el Realtime Gateway se entera por Redis (clave con TTL + evento SessionRevoked).
+        revocacionPublisher.publicarRevocacion(jti, userId, expira);
     }
 
     @Transactional

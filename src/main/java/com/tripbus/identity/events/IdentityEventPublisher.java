@@ -14,9 +14,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Publica los eventos de identity (UserRegistered, UserLoggedIn, UserDataUpdated) en el bus
+ * Publica los eventos de identity (UserRegistered, UserLoggedIn, SessionRevoked) en el bus
  * de eventos del MVP (stream de Redis "tripbus:events"). Es "best effort": si Redis no está
- * disponible el registro/login NO falla (ningún consumidor depende críticamente de ellos).
+ * disponible el registro/login/logout NO falla (ningún consumidor depende críticamente de ellos).
  */
 @Component
 public class IdentityEventPublisher {
@@ -24,6 +24,7 @@ public class IdentityEventPublisher {
     public static final String USER_REGISTERED = "UserRegistered";
     public static final String USER_LOGGED_IN = "UserLoggedIn";
     public static final String USER_DATA_UPDATED = "UserDataUpdated";
+    public static final String SESSION_REVOKED = "SessionRevoked";
 
     private static final Logger log = LoggerFactory.getLogger(IdentityEventPublisher.class);
 

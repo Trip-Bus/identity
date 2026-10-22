@@ -11,14 +11,12 @@ import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import com.tripbus.identity.security.PasswordHasher;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 
 @Service
 public class AuthService {
@@ -57,32 +55,10 @@ public class AuthService {
             // Registro concurrente: otra petición con el mismo email/documento pasó la verificación
             // de arriba al mismo tiempo y el índice único de la BD rechazó esta. Se responde 409 con
             // el mismo código que el duplicado normal en vez de un 500.
-            throw traducirConflicto(ex);
+            throw ConflictosUnicidad.traducir(ex);
         }
 
         return emitirRespuesta(usuario);
-    }
-
-    private static RuntimeException traducirConflicto(DataIntegrityViolationException ex) {
-        String restriccion = nombreRestriccion(ex);
-        if (restriccion.contains("email")) {
-            return new EmailYaRegistradoException();
-        }
-        if (restriccion.contains("documento")) {
-            return new DocumentoYaRegistradoException();
-        }
-        return ex;
-    }
-
-    /** Nombre del índice/constraint que falló (uq_usuarios_email_lower, uq_usuarios_documento_identidad). */
-    private static String nombreRestriccion(DataIntegrityViolationException ex) {
-        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
-            if (causa instanceof ConstraintViolationException cve && cve.getConstraintName() != null) {
-                return cve.getConstraintName().toLowerCase(Locale.ROOT);
-            }
-        }
-        String mensaje = ex.getMostSpecificCause().getMessage();
-        return mensaje != null ? mensaje.toLowerCase(Locale.ROOT) : "";
     }
 
     public AuthResponse login(LoginRequest request) {

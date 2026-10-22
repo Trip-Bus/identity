@@ -203,6 +203,28 @@ class IdentityPostgresIT {
         }
     }
 
+    /** V6 rellena la columna de búsqueda de los usuarios existentes sin tildes ni mayúsculas. */
+    @Test
+    void migracionV6RellenaLaBusquedaDeLosUsuariosExistentes() throws Exception {
+        String esquema = "v6_busqueda";
+        flywayEnEsquema(esquema, "5").migrate();
+        try (Connection c = conexion(); PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad, nombre,"
+                        + " fecha_creacion, fecha_actualizacion) VALUES (?, 'jose@mail.com', 'hash', 'CC-V6',"
+                        + " 'José ÑUÑEZ Álvarez', now(), now())")) {
+            ps.setObject(1, UUID.randomUUID());
+            ps.executeUpdate();
+        }
+
+        flywayEnEsquema(esquema, "6").migrate();
+
+        try (Connection c = conexion(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT busqueda FROM " + esquema + ".usuarios")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("jose nunez alvarez jose@mail.com cc-v6");
+        }
+    }
+
     private static Flyway flywayEnEsquema(String esquema, String version) {
         return Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())

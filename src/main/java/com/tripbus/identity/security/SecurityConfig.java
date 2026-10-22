@@ -2,6 +2,7 @@ package com.tripbus.identity.security;
 
 import com.tripbus.identity.repository.SesionRevocadaRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -21,13 +22,16 @@ public class SecurityConfig {
     private final SesionRevocadaRepository sesionRevocadaRepository;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final String internalToken;
 
     public SecurityConfig(
             JwtKeyProvider jwtKeyProvider,
             UsuarioRepository usuarioRepository,
             SesionRevocadaRepository sesionRevocadaRepository,
             JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-            JwtAccessDeniedHandler jwtAccessDeniedHandler) {
+            JwtAccessDeniedHandler jwtAccessDeniedHandler,
+            @Value("${tripbus.internal-token}") String internalToken) {
+        this.internalToken = internalToken;
         this.jwtKeyProvider = jwtKeyProvider;
         this.usuarioRepository = usuarioRepository;
         this.sesionRevocadaRepository = sesionRevocadaRepository;
@@ -52,13 +56,17 @@ public class SecurityConfig {
                         .permitAll()
                         // Página de error de Spring Boot: sin esto, un 404 (ruta inexistente) se reporta como 401.
                         .requestMatchers("/error").permitAll()
+                        // Servicio a servicio: solo con X-Internal-Token válido (InternalTokenFilter).
+                        .requestMatchers("/internal/**").hasRole(InternalTokenFilter.INTERNAL_ROLE)
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtKeyProvider, usuarioRepository, sesionRevocadaRepository),
-                        UsernamePasswordAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class)
+                // Misma posición que el filtro JWT y agregado después: corre después de él.
+                .addFilterBefore(new InternalTokenFilter(internalToken), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

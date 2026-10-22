@@ -6,6 +6,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -58,6 +59,45 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCompanyIdRequerido(CompanyIdRequeridoException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("COMPANY_ID_REQUIRED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(EmpresaNoEncontradaException.class)
+    public ResponseEntity<ErrorResponse> handleEmpresaNoEncontrada(EmpresaNoEncontradaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("COMPANY_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(EmpresaInactivaException.class)
+    public ResponseEntity<ErrorResponse> handleEmpresaInactiva(EmpresaInactivaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("COMPANY_INACTIVE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(CatalogNoDisponibleException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogNoDisponible(CatalogNoDisponibleException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("CATALOG_UNAVAILABLE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(NoPuedeSuspenderseException.class)
+    public ResponseEntity<ErrorResponse> handleNoPuedeSuspenderse(NoPuedeSuspenderseException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CANNOT_SUSPEND_SELF", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RolNoPermitidoException.class)
+    public ResponseEntity<ErrorResponse> handleRolNoPermitido(RolNoPermitidoException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("VALIDATION_ERROR", "Uno o más campos no son válidos",
+                        Map.of("rol", ex.getMessage())));
+    }
+
+    /** Parámetro con un valor que no se puede convertir (p. ej. ?rol=CHOFER o ?companyId=abc). */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("VALIDATION_ERROR", "Uno o más campos no son válidos",
+                        Map.of(ex.getName(), "Valor no válido")));
     }
 
     @ExceptionHandler(TokenInvalidoOExpiradoException.class)

@@ -1,5 +1,6 @@
 package com.tripbus.identity.model;
 
+import com.tripbus.identity.util.TextoBusqueda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,6 +8,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -55,7 +58,17 @@ public class Usuario {
     @Column(name = "password_changed_at")
     private Instant passwordChangedAt;
 
+    /** US-102: nombre, email y documento sin mayúsculas ni tildes (ver TextoBusqueda). */
+    @Column(nullable = false, length = 600)
+    private String busqueda;
+
     protected Usuario() {
+    }
+
+    @PrePersist
+    @PreUpdate
+    void actualizarBusqueda() {
+        this.busqueda = TextoBusqueda.deUsuario(nombre, email, documentoIdentidad);
     }
 
     public Usuario(String email, String passwordHash, String documentoIdentidad, String nombre) {

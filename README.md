@@ -7,7 +7,7 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 
 **Stack:** Java 21 · Spring Boot 3.5.16 · PostgreSQL 16 · Redis 7
 
-**HU:** US-001, US-096, US-005 · **Puerto:** 18001 · **BD:** `tripbus_identity` (puerto QA 18101)
+**HU:** US-001, US-096, US-005, US-101 a US-104 · **Puerto:** 18001 · **BD:** `tripbus_identity` (puerto QA 18101)
 
 ## API
 
@@ -18,9 +18,25 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | POST | `/auth/logout` | Revoca el token actual (claim `jti`). |
 | GET/POST | `/auth/validate` | Valida un JWT (lo usa el API Gateway). Headers `X-User-Id`, `X-User-Role`. |
 | POST | `/auth/password-reset/request` · `/confirm` | Recuperación de contraseña. |
-| GET | `/users/{id}` · `/users/{id}/roles` | Datos públicos / roles. |
-| PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId`. |
+| GET | `/users/{id}` · `/users/{id}/roles` | Datos públicos / roles (el propio usuario o ADMIN). |
+| GET | `/users?rol=&companyId=&activo=&q=&page=&size=` | Listar y buscar usuarios (ADMIN, US-102). `q` busca en nombre, email y documento sin distinguir mayúsculas ni tildes. Del más reciente al más antiguo; `size` por defecto 20, máximo 100. Respuesta `{content, page, size, totalElements, totalPages}`; nunca incluye `passwordHash`. |
+| POST | `/users` | Crear OPERADOR o CONDUCTOR (ADMIN, US-103): `{nombre, email, documentoIdentidad, rol, companyId}` → 201. Sin contraseña: se envía el enlace de recuperación (mismo flujo y vigencia de `/auth/password-reset`) para que la persona defina la suya. El consentimiento queda aceptado por el ADMIN en nombre del usuario (`consentimientos.origen = ADMIN_EN_NOMBRE_DEL_USUARIO`). 409 `EMAIL_ALREADY_REGISTERED` / `DOCUMENTO_ALREADY_REGISTERED`. |
+| PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId` válido en catalog (US-101). |
+| PATCH | `/users/{id}/estado` | Suspender o reactivar (ADMIN, US-104): `{activo, motivo}`. Los tokens de una cuenta suspendida dejan de valer de inmediato (403 `ACCOUNT_SUSPENDED`). Un ADMIN no puede suspenderse a sí mismo (400 `CANNOT_SUSPEND_SELF`). |
 | GET | `/.well-known/jwks.json` | Llave pública: los demás servicios validan los JWT localmente. |
+
+### Validación de la empresa en catalog (US-101)
+
+Al asignar OPERADOR o CONDUCTOR (`PUT /users/{id}/role` y `POST /users`) identity consulta
+`GET {CATALOG_URL}/internal/companies/{companyId}` con el header `X-Internal-Token` (`INTERNAL_API_TOKEN`).
+Timeouts: 300 ms de conexión y 800 ms de lectura. Sin validar la empresa no se asigna el rol.
+
+| Caso | Respuesta |
+|---|---|
+| Falta `companyId` | 400 `COMPANY_ID_REQUIRED` |
+| Catalog responde 404 | 400 `COMPANY_NOT_FOUND` |
+| Empresa con `estado` distinto de `ACTIVA` | 400 `COMPANY_INACTIVE` |
+| Catalog no responde, timeout o error | 503 `CATALOG_UNAVAILABLE` |
 
 ### Claims del token
 
@@ -41,16 +57,24 @@ WARN y la operación responde igual.
 
 | `type` | Cuándo | `payload` |
 |---|---|---|
-| `UserRegistered` | `POST /auth/register` exitoso. | `userId`, `email`, `role`, `timestamp` |
+| `UserRegistered` | `POST /auth/register` o `POST /users` (US-103) exitoso. | `userId`, `email`, `role`, `timestamp` |
 | `UserLoggedIn` | `POST /auth/login` exitoso. | `userId`, `timestamp`, `ip` |
 | `SessionRevoked` | `POST /auth/logout` (US-006). | `jti`, `userId` |
+| `UserSuspended` | `PATCH /users/{id}/estado` con `activo: false` sobre una cuenta activa (US-104). | `userId`, `motivo` |
+| `UserReactivated` | `PATCH /users/{id}/estado` con `activo: true` sobre una cuenta suspendida (US-104). | `userId`, `motivo` |
 
-Además, en el logout se guarda la clave `tripbus:revoked:{jti}` = `"1"` con TTL igual al tiempo que
-le quedaba al token (mínimo 1 s), para que el Realtime Gateway rechace ese token sin consultar a
-identity. La fuente de verdad sigue siendo la tabla `sesiones_revocadas`.
+Claves de Redis que deja identity para el Realtime Gateway (sin consultar a identity):
 
-`EVENTS_ENABLED=false` apaga los eventos y las claves de revocación (toda la integración con Redis).
-Identity no publica `UserSuspended`: hoy no existe ningún flujo que suspenda una cuenta.
+| Clave | Cuándo | TTL | Fuente de verdad |
+|---|---|---|---|
+| `tripbus:revoked:{jti}` = `"1"` | Logout. | Lo que le quedaba al token (mínimo 1 s). | Tabla `sesiones_revocadas` |
+| `tripbus:suspended:{userId}` = `"1"` | Suspensión; se borra al reactivar. | Sin TTL. | Columna `usuarios.activo` |
+
+Suspender una cuenta ya suspendida (o reactivar una activa) vuelve a escribir (o borrar) la clave,
+para reparar una falla anterior de Redis, pero no repite el evento.
+
+`EVENTS_ENABLED=false` apaga los eventos y las claves de revocación y suspensión (toda la integración
+con Redis).
 
 ## Flujo de ramas y entornos
 
@@ -141,10 +165,13 @@ no arranca y dice cuáles faltan (`RequiredSecretsCheck`).
 | `REDIS_PASSWORD` | ✔ | ✔ |
 | `JWT_PRIVATE_KEY_PATH` | ✔ | ✔ |
 | `JWT_PUBLIC_KEY_PATH` | ✔ | ✔ |
+| `CATALOG_URL` | ✔ | ✔ |
+| `INTERNAL_API_TOKEN` | ✔ | ✔ |
 | `DEMO_USERS_PASSWORD` | ✔ | — (sin usuarios demo) |
 
 Opcionales con valor por defecto: `SERVER_PORT`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`,
-`DB_POOL_SIZE`, `REDIS_HOST`, `REDIS_PORT`, `JWT_EXPIRATION_MINUTES`.
+`DB_POOL_SIZE`, `REDIS_HOST`, `REDIS_PORT`, `JWT_EXPIRATION_MINUTES`. Desde el IDE, `CATALOG_URL` e
+`INTERNAL_API_TOKEN` toman `http://localhost:18002` y `tripbus_internal_qa_token`, igual que en booking.
 
 ## Ejecutar sin Docker
 
@@ -184,6 +211,8 @@ mvn -B verify      # unitarias + H2 + integración con PostgreSQL real (Testcont
 
 - `*Test` / `*Tests`: unitarias y de controlador con H2 (perfil `test`, Flyway apagado).
 - `IdentityPostgresIT`: levanta PostgreSQL 16 con Testcontainers y corre las migraciones Flyway reales.
+- `RevocacionRedisIT` y `GestionUsuariosIT`: PostgreSQL y Redis reales; `GestionUsuariosIT` simula
+  catalog con un servidor HTTP real (US-101 a US-104).
 
 Toda la plataforma: ver el README de **API-gateway**.
 
@@ -201,10 +230,10 @@ Toda la plataforma: ver el README de **API-gateway**.
 `mvn verify` falla si la cobertura total baja de los mínimos del `pom.xml`, en **todas** las ramas
 (también en `main`, donde Sonar no corre):
 
-| Métrica | Medido (2026-10-09) | Mínimo |
+| Métrica | Medido (2026-10-22) | Mínimo |
 |---|---|---|
-| Líneas | 82 % | `jacoco.minimo.lineas` = 0.80 |
-| Ramas | 68 % | `jacoco.minimo.ramas` = 0.65 |
+| Líneas | 91,5 % | `jacoco.minimo.lineas` = 0.90 |
+| Ramas | 83,5 % | `jacoco.minimo.ramas` = 0.80 |
 
 **La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.** Corre `mvn verify`, mira
 el total en `target/site/jacoco/index.html` (o la tabla del CI), redondéalo hacia abajo al 5 % y

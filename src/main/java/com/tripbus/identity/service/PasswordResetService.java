@@ -49,19 +49,30 @@ public class PasswordResetService {
         // Decisión de seguridad: si el email no existe, se retorna en silencio (sin
         // crear token ni lanzar excepción), para que el controlador responda EXACTAMENTE
         // igual en ambos casos y este endpoint no sirva para enumerar cuentas.
-        usuarioRepository.findByEmail(email).ifPresent(usuario -> {
-            byte[] randomBytes = new byte[TOKEN_RANDOM_BYTES];
-            secureRandom.nextBytes(randomBytes);
-            String tokenPlano = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+        usuarioRepository.findByEmail(email).ifPresent(usuario -> emitirYEnviarToken(usuario, email));
+    }
 
-            Instant now = Instant.now();
-            PasswordResetToken resetToken =
-                    new PasswordResetToken(usuario.getId(), hashToken(tokenPlano), now, now.plus(TOKEN_TTL));
-            passwordResetTokenRepository.save(resetToken);
+    /**
+     * US-103: una cuenta creada por un ADMIN no tiene contraseña conocida. Se le envía el mismo
+     * enlace de recuperación para que la persona defina la suya.
+     */
+    @Transactional
+    public void enviarEnlaceDefinirContrasena(Usuario usuario) {
+        emitirYEnviarToken(usuario, usuario.getEmail());
+    }
 
-            // El token en texto plano solo se usa para el correo; nunca se persiste.
-            emailSender.enviarCorreoRecuperacion(email, tokenPlano);
-        });
+    private void emitirYEnviarToken(Usuario usuario, String email) {
+        byte[] randomBytes = new byte[TOKEN_RANDOM_BYTES];
+        secureRandom.nextBytes(randomBytes);
+        String tokenPlano = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+
+        Instant now = Instant.now();
+        PasswordResetToken resetToken =
+                new PasswordResetToken(usuario.getId(), hashToken(tokenPlano), now, now.plus(TOKEN_TTL));
+        passwordResetTokenRepository.save(resetToken);
+
+        // El token en texto plano solo se usa para el correo; nunca se persiste.
+        emailSender.enviarCorreoRecuperacion(email, tokenPlano);
     }
 
     @Transactional

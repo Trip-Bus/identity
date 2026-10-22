@@ -1,6 +1,7 @@
 package com.tripbus.identity.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tripbus.identity.client.CatalogClient;
 import com.tripbus.identity.dto.CambiarRolRequest;
 import com.tripbus.identity.dto.LoginRequest;
 import com.tripbus.identity.dto.RegistroRequest;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
@@ -45,6 +47,10 @@ class SecurityAccessControlTests {
 
     @Autowired
     private JwtSigner jwtSigner;
+
+    // US-101: asignar OPERADOR/CONDUCTOR consulta la empresa en catalog; aquí siempre es válida.
+    @MockitoBean
+    private CatalogClient catalogClient;
 
     private UUID usuarioObjetivoId;
 

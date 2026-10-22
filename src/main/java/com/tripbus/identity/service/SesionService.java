@@ -62,6 +62,13 @@ public class SesionService {
         consentimientoRepository.save(new Consentimiento(usuarioId, POLITICA_DATOS, VERSION_POLITICA, Instant.now()));
     }
 
+    /** US-103: el ADMIN que crea la cuenta acepta la política en nombre del usuario. */
+    @Transactional
+    public void registrarConsentimientoPorAdmin(UUID usuarioId, UUID adminId) {
+        consentimientoRepository.save(new Consentimiento(usuarioId, POLITICA_DATOS, VERSION_POLITICA, Instant.now(),
+                Consentimiento.ORIGEN_ADMIN, adminId));
+    }
+
     /** Las revocaciones de tokens ya expirados no sirven: se purgan cada hora. */
     @Scheduled(fixedDelay = 3_600_000, initialDelay = 300_000)
     @Transactional

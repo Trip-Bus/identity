@@ -77,6 +77,11 @@ info:
     commit: ${APP_COMMIT:local}
 
 tripbus:
+  # Secreto compartido de las llamadas servicio a servicio (/internal/**, header X-Internal-Token).
+  internal-token: ${INTERNAL_API_TOKEN:tripbus_internal_qa_token}
+  services:
+    # US-101: identity valida en catalog la empresa de un OPERADOR/CONDUCTOR.
+    catalog-url: ${CATALOG_URL:http://localhost:18002}
   events:
     enabled: ${EVENTS_ENABLED:true}
     stream: ${EVENTS_STREAM:tripbus:events}

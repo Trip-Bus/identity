@@ -24,6 +24,7 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId` válido en catalog (US-101). |
 | PATCH | `/users/{id}/estado` | Suspender o reactivar (ADMIN, US-104): `{activo, motivo}`. Los tokens de una cuenta suspendida dejan de valer de inmediato (403 `ACCOUNT_SUSPENDED`). Un ADMIN no puede suspenderse a sí mismo (400 `CANNOT_SUSPEND_SELF`). |
 | GET | `/.well-known/jwks.json` | Llave pública: los demás servicios validan los JWT localmente. |
+| GET | `/internal/users/{id}` | Servicio a servicio (`X-Internal-Token` = `INTERNAL_API_TOKEN`): `{id, nombre, rol, companyId, activo}`. Nunca devuelve email, documento ni `passwordHash`. Sin token o con token incorrecto → 401; inexistente → 404 `USER_NOT_FOUND`. El API Gateway no enruta `/internal/**`. |
 
 ### Validación de la empresa en catalog (US-101)
 

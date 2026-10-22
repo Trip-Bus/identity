@@ -5,6 +5,7 @@ import com.tripbus.identity.dto.CambiarEstadoRequest;
 import com.tripbus.identity.dto.CambiarRolRequest;
 import com.tripbus.identity.dto.CrearUsuarioRequest;
 import com.tripbus.identity.dto.PageResponse;
+import com.tripbus.identity.dto.UsuarioInternoResponse;
 import com.tripbus.identity.dto.UsuarioResponse;
 import com.tripbus.identity.events.IdentityEventPublisher;
 import com.tripbus.identity.events.SuspensionPublisher;
@@ -73,6 +74,14 @@ public class UsuarioService {
     public UsuarioResponse obtenerPorId(UUID id) {
         Usuario usuario = usuarioRepository.findById(id).orElseThrow(UsuarioNoEncontradoException::new);
         return toResponse(usuario);
+    }
+
+    /** Consulta servicio a servicio (/internal/users/{id}): sin email, documento ni passwordHash. */
+    @Transactional(readOnly = true)
+    public UsuarioInternoResponse obtenerInterno(UUID id) {
+        Usuario usuario = usuarioRepository.findById(id).orElseThrow(UsuarioNoEncontradoException::new);
+        return new UsuarioInternoResponse(usuario.getId(), usuario.getNombre(), usuario.getRol(),
+                usuario.getCompanyId(), usuario.isActivo());
     }
 
     /** US-102: listado paginado, del más reciente al más antiguo. size se limita a 1..100. */

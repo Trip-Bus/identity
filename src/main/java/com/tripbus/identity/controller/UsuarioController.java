@@ -15,6 +15,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -90,6 +91,13 @@ public class UsuarioController {
                                                          @Valid @RequestBody CambiarEstadoRequest request,
                                                          @AuthenticationPrincipal UsuarioAutenticado actual) {
         return ResponseEntity.ok(usuarioService.cambiarEstado(id, request, actual.userId()));
+    }
+
+    @DeleteMapping("/{id}/lock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> desbloquear(@PathVariable UUID id) {
+        usuarioService.desbloquear(id);
+        return ResponseEntity.noContent().build();
     }
 
     private static void exigirPropioOAdmin(UUID id, UsuarioAutenticado actual, String mensaje) {

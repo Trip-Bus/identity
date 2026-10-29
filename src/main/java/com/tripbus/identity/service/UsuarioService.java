@@ -27,6 +27,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
@@ -53,14 +54,19 @@ public class UsuarioService {
     private final IdentityEventPublisher events;
     private final SuspensionPublisher suspensionPublisher;
     private final SecureRandom secureRandom = new SecureRandom();
+    private final RefreshTokenService refreshTokens;
+    private final LoginAttemptService loginAttempts;
 
+    @Autowired
     public UsuarioService(UsuarioRepository usuarioRepository,
                           CatalogClient catalogClient,
                           PasswordHasher passwordHasher,
                           PasswordResetService passwordResetService,
                           SesionService sesionService,
                           IdentityEventPublisher events,
-                          SuspensionPublisher suspensionPublisher) {
+                          SuspensionPublisher suspensionPublisher,
+                          RefreshTokenService refreshTokens,
+                          LoginAttemptService loginAttempts) {
         this.usuarioRepository = usuarioRepository;
         this.catalogClient = catalogClient;
         this.passwordHasher = passwordHasher;
@@ -68,6 +74,15 @@ public class UsuarioService {
         this.sesionService = sesionService;
         this.events = events;
         this.suspensionPublisher = suspensionPublisher;
+        this.refreshTokens = refreshTokens;
+        this.loginAttempts = loginAttempts;
+    }
+
+    public UsuarioService(UsuarioRepository usuarioRepository, CatalogClient catalogClient, PasswordHasher passwordHasher,
+            PasswordResetService passwordResetService, SesionService sesionService, IdentityEventPublisher events,
+            SuspensionPublisher suspensionPublisher) {
+        this(usuarioRepository, catalogClient, passwordHasher, passwordResetService, sesionService, events,
+                suspensionPublisher, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -171,6 +186,7 @@ public class UsuarioService {
         if (cambio) {
             usuario.setActivo(activo);
             usuario = usuarioRepository.save(usuario);
+            if (!activo && refreshTokens != null) refreshTokens.revokeAll(id);
         }
 
         if (activo) {
@@ -180,6 +196,12 @@ public class UsuarioService {
         }
         log.info("Usuario {} {} por el administrador {}", id, activo ? "reactivado" : "suspendido", adminId);
         return toResponse(usuario);
+    }
+
+    @Transactional
+    public void desbloquear(UUID id) {
+        Usuario usuario = usuarioRepository.findById(id).orElseThrow(UsuarioNoEncontradoException::new);
+        if (loginAttempts != null) loginAttempts.clear(usuario.getEmail());
     }
 
     private void validarEmpresa(UUID companyId) {

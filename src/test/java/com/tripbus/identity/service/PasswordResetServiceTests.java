@@ -93,6 +93,20 @@ class PasswordResetServiceTests {
     }
 
     @Test
+    void avisoDeBloqueoGuardaElHashDeUnTokenYEnviaCorreoEspecifico() {
+        UUID userId=UUID.randomUUID();
+        Usuario usuario=mock(Usuario.class);
+        when(usuario.getId()).thenReturn(userId);
+        when(usuario.getEmail()).thenReturn("ana@mail.com");
+        when(usuario.getNombre()).thenReturn("Ana");
+        passwordResetService.enviarAvisoBloqueo(usuario);
+        ArgumentCaptor<PasswordResetToken> captor=ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(passwordResetTokenRepository).save(captor.capture());
+        assertThat(captor.getValue().getTokenHash()).hasSize(64);
+        verify(emailSender).enviarAvisoBloqueoCuenta(eq("ana@mail.com"),eq("Ana"),anyString());
+    }
+
+    @Test
     void solicitarRecuperacionConEmailInexistenteNoCreaTokenNiEnviaCorreo() {
         when(usuarioRepository.findByEmail("noexiste@tripbus.com")).thenReturn(Optional.empty());
 

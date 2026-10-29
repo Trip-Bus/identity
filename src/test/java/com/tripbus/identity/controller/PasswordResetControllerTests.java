@@ -78,6 +78,11 @@ class PasswordResetControllerTests {
         }
 
         @Override
+        public void enviarAvisoBloqueoCuenta(String email, String nombre, String tokenPlano) {
+            // Esta prueba solo usa el enlace de recuperación.
+        }
+
+        @Override
         public void enviarCorreoVerificacion(String email, String nombre, String tokenPlano) {
             // Esta prueba solo usa el enlace de recuperación.
         }

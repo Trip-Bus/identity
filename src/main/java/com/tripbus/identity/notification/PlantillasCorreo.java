@@ -41,6 +41,14 @@ public class PlantillasCorreo {
                 "Si no lo pediste, ignora este correo: tu contraseña sigue igual.");
     }
 
+    public Correo avisoBloqueoCuenta(String nombre, String tokenPlano) {
+        return armar("Bloqueamos temporalmente el acceso a tu cuenta de TripBus", nombre,
+                "Detectamos varios intentos fallidos y bloqueamos temporalmente el acceso. "
+                        + "Si no fuiste tú, cambia tu contraseña con este enlace. Vence en 15 minutos y solo sirve una vez.",
+                "Recuperar mi cuenta", enlaceRestablecer(tokenPlano),
+                "Si fuiste tú quien intentaba ingresar, espera a que termine el bloqueo para volver a iniciar sesión.");
+    }
+
     public Correo verificacion(String nombre, String tokenPlano) {
         return armar("Confirma tu correo en TripBus", nombre,
                 "Para confirmar que este correo es tuyo, abre este enlace. Vence en 24 horas.",

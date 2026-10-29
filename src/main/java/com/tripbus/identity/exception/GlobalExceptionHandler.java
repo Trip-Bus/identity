@@ -1,6 +1,8 @@
 package com.tripbus.identity.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import com.tripbus.identity.exception.RefreshTokenException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -41,6 +43,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCredencialesInvalidas(CredencialesInvalidasException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_CREDENTIALS", ex.getMessage()));
+    }
+
+    @ExceptionHandler(CuentaBloqueadaException.class)
+    public ResponseEntity<ErrorResponse> handleCuentaBloqueada(CuentaBloqueadaException ex) {
+        return ResponseEntity.status(423).header(HttpHeaders.RETRY_AFTER,
+                        String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("ACCOUNT_LOCKED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handleRefreshToken(RefreshTokenException ex) {
+        HttpStatus status = "ACCOUNT_SUSPENDED".equals(ex.getCode()) ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED;
+        return ResponseEntity.status(status).body(ErrorResponse.of(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(CuentaSuspendidaException.class)

@@ -14,6 +14,7 @@ import com.tripbus.identity.security.PasswordHasher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -30,17 +31,25 @@ public class CuentaService {
     private final AuthService authService;
     private final CambioContrasenaPublisher cambioContrasenaPublisher;
     private final EmailSender emailSender;
+    private final RefreshTokenService refreshTokens;
 
+    @Autowired
     public CuentaService(UsuarioRepository usuarioRepository,
                          PasswordHasher passwordHasher,
                          AuthService authService,
                          CambioContrasenaPublisher cambioContrasenaPublisher,
-                         EmailSender emailSender) {
+                         EmailSender emailSender, RefreshTokenService refreshTokens) {
         this.usuarioRepository = usuarioRepository;
         this.passwordHasher = passwordHasher;
         this.authService = authService;
         this.cambioContrasenaPublisher = cambioContrasenaPublisher;
         this.emailSender = emailSender;
+        this.refreshTokens = refreshTokens;
+    }
+
+    public CuentaService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, AuthService authService,
+                         CambioContrasenaPublisher cambioContrasenaPublisher, EmailSender emailSender) {
+        this(usuarioRepository, passwordHasher, authService, cambioContrasenaPublisher, emailSender, null);
     }
 
     @Transactional(readOnly = true)
@@ -72,6 +81,7 @@ public class CuentaService {
         usuario.setPasswordHash(passwordHasher.hash(request.passwordNueva()));
         usuario.setPasswordChangedAt(now);
         usuario = usuarioRepository.save(usuario);
+        if (refreshTokens != null) refreshTokens.revokeAll(usuarioId);
 
         cambioContrasenaPublisher.publicarCambio(usuarioId, now);
         emailSender.enviarAvisoCambioContrasena(usuario.getEmail(), usuario.getNombre());

@@ -94,6 +94,14 @@ class SmtpEmailSenderTest {
     }
 
     @Test
+    void avisoDeBloqueoSeEnviaConEnlaceDeRecuperacion() throws Exception {
+        sender.enviarAvisoBloqueoCuenta("ana@tripbus.co", "Ana", TOKEN);
+        verify(mailSender).send(mensaje);
+        assertThat(mensaje.getSubject()).contains("Bloqueamos temporalmente");
+        assertThat(crudo()).contains("/restablecer?token=3D" + TOKEN, "varios intentos fallidos");
+    }
+
+    @Test
     void siElSmtpFallaSoloQuedaUnWarnSinTokenYNoSeLanzaExcepcion() {
         doThrow(new MailSendException("Connection refused")).when(mailSender).send(any(MimeMessage.class));
 

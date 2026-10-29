@@ -48,6 +48,21 @@ class LoggingEmailSenderTest {
     }
 
     @Test
+    void avisoDeBloqueoDejaElTokenSoloEnDebug() {
+        logger.setLevel(Level.INFO);
+        sender.enviarAvisoBloqueoCuenta("ana@tripbus.co", "Ana", TOKEN);
+        assertThat(appender.list).singleElement().satisfies(evento -> {
+            assertThat(evento.getLevel()).isEqualTo(Level.INFO);
+            assertThat(evento.getFormattedMessage()).contains("bloqueo", "ana@tripbus.co").doesNotContain(TOKEN);
+        });
+        appender.list.clear();
+        logger.setLevel(Level.DEBUG);
+        sender.enviarAvisoBloqueoCuenta("ana@tripbus.co", "Ana", TOKEN);
+        assertThat(appender.list).anySatisfy(evento -> assertThat(evento.getFormattedMessage()).contains(TOKEN,
+                "http://localhost:5173/restablecer?token=" + TOKEN));
+    }
+
+    @Test
     void elEnlaceDeRecuperacionConElTokenSoloApareceEnDebug() {
         logger.setLevel(Level.DEBUG);
 

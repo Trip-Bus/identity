@@ -27,6 +27,15 @@ public class LoggingEmailSender implements EmailSender {
     }
 
     @Override
+    public void enviarAvisoBloqueoCuenta(String email, String nombre, String tokenPlano) {
+        log.info("Aviso de bloqueo de cuenta enviado a {} (sin SMTP: solo log)", email);
+        if (log.isDebugEnabled()) {
+            log.debug("Enlace de recuperación por bloqueo para {} (solo DEBUG): {}", email,
+                    plantillas.enlaceRestablecer(tokenPlano));
+        }
+    }
+
+    @Override
     public void enviarCorreoVerificacion(String email, String nombre, String tokenPlano) {
         log.info("Correo de verificación enviado a {} (sin SMTP: solo log)", email);
         if (log.isDebugEnabled()) {

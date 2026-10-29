@@ -77,6 +77,24 @@ class IdentityPostgresIT {
         assertThat(consentimientoRepository.findByUsuarioId(userId)).hasSize(1);
     }
 
+    @Test
+    void refreshRotaElTokenYLaReutilizacionInvalidaLaFamiliaContraPostgresReal() {
+        String email="refresh."+UUID.randomUUID()+"@tripbus.co";
+        ResponseEntity<JsonNode> registro=registrar(email,"CC-REFRESH-"+UUID.randomUUID());
+        String inicial=registro.getBody().get("refreshToken").asText();
+        assertThat(registro.getBody().get("refreshExpiresAt").asText()).isNotBlank();
+        ResponseEntity<JsonNode> renovacion=rest.postForEntity("/auth/refresh",Map.of("refreshToken",inicial),JsonNode.class);
+        assertThat(renovacion.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String rotado=renovacion.getBody().get("refreshToken").asText();
+        assertThat(rotado).isNotEqualTo(inicial);
+        ResponseEntity<JsonNode> reuse=rest.postForEntity("/auth/refresh",Map.of("refreshToken",inicial),JsonNode.class);
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(reuse.getBody().at("/error/code").asText()).isEqualTo("REFRESH_TOKEN_REUSED");
+        ResponseEntity<JsonNode> familiaRevocada=rest.postForEntity("/auth/refresh",Map.of("refreshToken",rotado),JsonNode.class);
+        assertThat(familiaRevocada.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(familiaRevocada.getBody().at("/error/code").asText()).isEqualTo("INVALID_REFRESH_TOKEN");
+    }
+
     private ResponseEntity<JsonNode> registrar(String email, String documento) {
         return rest.postForEntity("/auth/register", Map.of(
                 "email", email,

@@ -2,12 +2,15 @@ package com.tripbus.identity.controller;
 
 import com.tripbus.identity.dto.AuthResponse;
 import com.tripbus.identity.dto.LoginRequest;
+import com.tripbus.identity.dto.RefreshRequest;
+import com.tripbus.identity.dto.LogoutRequest;
 import com.tripbus.identity.dto.RegistroRequest;
 import com.tripbus.identity.dto.ValidacionTokenResponse;
 import com.tripbus.identity.events.IdentityEventPublisher;
 import com.tripbus.identity.security.UsuarioAutenticado;
 import com.tripbus.identity.service.AuthService;
 import com.tripbus.identity.service.SesionService;
+import com.tripbus.identity.service.RefreshTokenService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -31,11 +34,14 @@ public class AuthController {
     private final AuthService authService;
     private final SesionService sesionService;
     private final IdentityEventPublisher events;
+    private final RefreshTokenService refreshTokens;
 
-    public AuthController(AuthService authService, SesionService sesionService, IdentityEventPublisher events) {
+    public AuthController(AuthService authService, SesionService sesionService, IdentityEventPublisher events,
+                          RefreshTokenService refreshTokens) {
         this.authService = authService;
         this.sesionService = sesionService;
         this.events = events;
+        this.refreshTokens = refreshTokens;
     }
 
     @PostMapping("/register")
@@ -64,9 +70,16 @@ public class AuthController {
 
     /** US-096: cierra la sesión revocando el token actual. */
     @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authorization) {
-        sesionService.cerrarSesion(authorization.substring("Bearer ".length()).trim());
+    public ResponseEntity<Void> logout(@RequestHeader("Authorization") String authorization,
+                                       @RequestBody(required = false) LogoutRequest request) {
+        sesionService.cerrarSesion(authorization.substring("Bearer ".length()).trim(),
+                request == null ? null : request.refreshToken());
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return ResponseEntity.ok(refreshTokens.refresh(request.refreshToken()));
     }
 
     /**

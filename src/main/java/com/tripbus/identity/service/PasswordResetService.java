@@ -11,6 +11,7 @@ import com.tripbus.identity.security.GeneradorTokens;
 import com.tripbus.identity.security.PasswordHasher;
 import com.tripbus.identity.util.EmailNormalizer;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -28,20 +29,34 @@ public class PasswordResetService {
     private final EmailSender emailSender;
     private final GeneradorTokens generadorTokens;
     private final CambioContrasenaPublisher cambioContrasenaPublisher;
+    private final LoginAttemptService loginAttempts;
+    private final RefreshTokenService refreshTokens;
 
+    @Autowired
     public PasswordResetService(
             UsuarioRepository usuarioRepository,
             PasswordResetTokenRepository passwordResetTokenRepository,
             PasswordHasher passwordHasher,
             EmailSender emailSender,
             GeneradorTokens generadorTokens,
-            CambioContrasenaPublisher cambioContrasenaPublisher) {
+            CambioContrasenaPublisher cambioContrasenaPublisher,
+            LoginAttemptService loginAttempts,
+            RefreshTokenService refreshTokens) {
         this.usuarioRepository = usuarioRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordHasher = passwordHasher;
         this.emailSender = emailSender;
         this.generadorTokens = generadorTokens;
         this.cambioContrasenaPublisher = cambioContrasenaPublisher;
+        this.loginAttempts = loginAttempts;
+        this.refreshTokens = refreshTokens;
+    }
+
+    public PasswordResetService(UsuarioRepository usuarioRepository, PasswordResetTokenRepository passwordResetTokenRepository,
+            PasswordHasher passwordHasher, EmailSender emailSender, GeneradorTokens generadorTokens,
+            CambioContrasenaPublisher cambioContrasenaPublisher) {
+        this(usuarioRepository, passwordResetTokenRepository, passwordHasher, emailSender, generadorTokens,
+                cambioContrasenaPublisher, null, null);
     }
 
     @Transactional
@@ -62,16 +77,25 @@ public class PasswordResetService {
         emitirYEnviarToken(usuario, usuario.getEmail());
     }
 
-    private void emitirYEnviarToken(Usuario usuario, String email) {
-        String tokenPlano = generadorTokens.generar();
+    @Transactional
+    public void enviarAvisoBloqueo(Usuario usuario) {
+        String tokenPlano=crearYGuardarToken(usuario);
+        emailSender.enviarAvisoBloqueoCuenta(usuario.getEmail(), usuario.getNombre(), tokenPlano);
+    }
 
+    private void emitirYEnviarToken(Usuario usuario, String email) {
+        String tokenPlano=crearYGuardarToken(usuario);
+        // El token en texto plano solo se usa para el correo; nunca se persiste.
+        emailSender.enviarCorreoRecuperacion(email, usuario.getNombre(), tokenPlano);
+    }
+
+    private String crearYGuardarToken(Usuario usuario) {
+        String tokenPlano=generadorTokens.generar();
         Instant now = Instant.now();
         PasswordResetToken resetToken =
                 new PasswordResetToken(usuario.getId(), generadorTokens.hash(tokenPlano), now, now.plus(TOKEN_TTL));
         passwordResetTokenRepository.save(resetToken);
-
-        // El token en texto plano solo se usa para el correo; nunca se persiste.
-        emailSender.enviarCorreoRecuperacion(email, usuario.getNombre(), tokenPlano);
+        return tokenPlano;
     }
 
     @Transactional
@@ -95,11 +119,13 @@ public class PasswordResetService {
             usuario.setEmailVerificadoEn(now);
         }
         usuarioRepository.save(usuario);
+        if (loginAttempts != null) loginAttempts.clear(usuario.getEmail());
 
         resetToken.setUsedAt(now);
         passwordResetTokenRepository.save(resetToken);
 
         // US-129: los tokens anteriores ya no valen; el Realtime Gateway cierra las conexiones abiertas.
         cambioContrasenaPublisher.publicarCambio(usuario.getId(), now);
+        if (refreshTokens != null) refreshTokens.revokeAll(usuario.getId());
     }
 }

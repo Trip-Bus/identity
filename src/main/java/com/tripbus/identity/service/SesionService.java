@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -30,28 +31,46 @@ public class SesionService {
     private final ConsentimientoRepository consentimientoRepository;
     private final JwtKeyProvider keyProvider;
     private final RevocacionTokenPublisher revocacionPublisher;
+    private final RefreshTokenService refreshTokens;
 
+    @Autowired
     public SesionService(SesionRevocadaRepository sesionRevocadaRepository,
                          ConsentimientoRepository consentimientoRepository,
                          JwtKeyProvider keyProvider,
-                         RevocacionTokenPublisher revocacionPublisher) {
+                         RevocacionTokenPublisher revocacionPublisher, RefreshTokenService refreshTokens) {
         this.sesionRevocadaRepository = sesionRevocadaRepository;
         this.consentimientoRepository = consentimientoRepository;
         this.keyProvider = keyProvider;
         this.revocacionPublisher = revocacionPublisher;
+        this.refreshTokens = refreshTokens;
+    }
+
+    public SesionService(SesionRevocadaRepository sesionRevocadaRepository,
+                         ConsentimientoRepository consentimientoRepository, JwtKeyProvider keyProvider,
+                         RevocacionTokenPublisher revocacionPublisher) {
+        this(sesionRevocadaRepository, consentimientoRepository, keyProvider, revocacionPublisher, null);
     }
 
     /** Revoca el token actual: deja de ser aceptado aunque aún no haya expirado. */
     @Transactional
     public void cerrarSesion(String token) {
+        cerrarSesion(token, null);
+    }
+
+    @Transactional
+    public void cerrarSesion(String token, String refreshToken) {
         Claims claims = Jwts.parser().verifyWith(keyProvider.getPublicKey()).build()
                 .parseSignedClaims(token).getPayload();
+        UUID userId = UUID.fromString(claims.getSubject());
+        if (refreshTokens != null) {
+            Instant issuedAt = claims.getIssuedAt() != null ? claims.getIssuedAt().toInstant() : Instant.EPOCH;
+            refreshTokens.revokeForLogout(userId, issuedAt, refreshToken);
+        }
         String jti = claims.getId();
         if (jti == null || sesionRevocadaRepository.existsById(jti)) {
             return;
         }
         Instant expira = claims.getExpiration() != null ? claims.getExpiration().toInstant() : Instant.now();
-        UUID userId = UUID.fromString(claims.getSubject());
         sesionRevocadaRepository.save(new SesionRevocada(jti, userId, Instant.now(), expira));
         // US-006: el Realtime Gateway se entera por Redis (clave con TTL + evento SessionRevoked).
         revocacionPublisher.publicarRevocacion(jti, userId, expira);

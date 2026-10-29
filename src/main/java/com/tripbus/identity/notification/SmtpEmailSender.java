@@ -41,6 +41,11 @@ public class SmtpEmailSender implements EmailSender {
     }
 
     @Override
+    public void enviarAvisoBloqueoCuenta(String email, String nombre, String tokenPlano) {
+        enviar("aviso de bloqueo de cuenta", email, plantillas.avisoBloqueoCuenta(nombre, tokenPlano));
+    }
+
+    @Override
     public void enviarCorreoVerificacion(String email, String nombre, String tokenPlano) {
         enviar("verificación", email, plantillas.verificacion(nombre, tokenPlano));
     }

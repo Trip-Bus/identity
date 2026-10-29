@@ -95,4 +95,28 @@ class RevocacionRedisIT {
         assertThat(payload.get("jti").asText()).isEqualTo(jti);
         assertThat(payload.get("userId").asText()).isEqualTo(userId);
     }
+
+    @Test
+    void quintoFalloBloqueaIgualUnEmailRegistradoYUnoInexistente() {
+        String existente="lock."+UUID.randomUUID()+"@tripbus.co";
+        ResponseEntity<JsonNode> registro=rest.postForEntity("/auth/register",Map.of(
+                "email",existente,"password","Passw0rd1","documentoIdentidad","CC-"+UUID.randomUUID(),
+                "nombre","Cuenta bloqueable","aceptaPoliticaDatos",true),JsonNode.class);
+        assertThat(registro.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        ResponseEntity<JsonNode> cuenta=fallarCincoVeces(existente);
+        ResponseEntity<JsonNode> desconocido=fallarCincoVeces("missing."+UUID.randomUUID()+"@tripbus.co");
+        assertThat(cuenta.getStatusCode().value()).isEqualTo(423);
+        assertThat(desconocido.getStatusCode().value()).isEqualTo(423);
+        assertThat(cuenta.getHeaders().getFirst("Retry-After")).isNotBlank();
+        assertThat(desconocido.getBody().at("/error/code").asText()).isEqualTo("ACCOUNT_LOCKED");
+        ResponseEntity<JsonNode> contrasenaCorrecta=rest.postForEntity("/auth/login",Map.of(
+                "email",existente,"password","Passw0rd1"),JsonNode.class);
+        assertThat(contrasenaCorrecta.getStatusCode().value()).isEqualTo(423);
+    }
+
+    private ResponseEntity<JsonNode> fallarCincoVeces(String email) {
+        ResponseEntity<JsonNode> respuesta=null;
+        for(int i=0;i<5;i++) respuesta=rest.postForEntity("/auth/login",Map.of("email",email,"password","WrongPass1"),JsonNode.class);
+        return respuesta;
+    }
 }

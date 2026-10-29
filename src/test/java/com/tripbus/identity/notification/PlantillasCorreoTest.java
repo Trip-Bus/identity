@@ -37,6 +37,14 @@ class PlantillasCorreoTest {
     }
 
     @Test
+    void avisoDeBloqueoInformaElMotivoYEnlazaALaRecuperacion() {
+        Correo correo=plantillas.avisoBloqueoCuenta("Ana", "tok-lock");
+        assertThat(correo.asunto()).contains("Bloqueamos temporalmente");
+        assertThat(correo.texto()).contains("varios intentos fallidos", "https://tripbus.co/restablecer?token=tok-lock", "15 minutos");
+        assertThat(correo.html()).contains("href=\"https://tripbus.co/restablecer?token=tok-lock\"");
+    }
+
+    @Test
     void verificacionLlevaElEnlaceDeVerificarCorreo() {
         Correo correo = plantillas.verificacion("Luis", "tok456");
 

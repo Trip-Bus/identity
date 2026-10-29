@@ -14,8 +14,9 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | Método | Endpoint | Descripción |
 |---|---|---|
 | POST | `/auth/register` | Crea cuenta PASAJERO. Exige `aceptaPoliticaDatos: true` (Ley 1581) → 201 + JWT. Envía el correo de verificación (US-130). |
-| POST | `/auth/login` | JWT con rol, `companyId` y expiración (60 min). No exige el correo verificado. |
-| POST | `/auth/logout` | Revoca el token actual (claim `jti`). |
+| POST | `/auth/login` | Access token (60 min por defecto) y refresh token (14 días). Tras 5 fallos por email normalizado en 15 min, bloquea 15 min. No exige el correo verificado. |
+| POST | `/auth/refresh` | Público: `{refreshToken}` rota el refresh token y emite un access token con rol, `companyId` y `emailVerificado` actuales. |
+| POST | `/auth/logout` | Revoca el token actual (claim `jti`) y la familia del refresh token; admite `{refreshToken}` opcional. Sin body, revoca refresh tokens de esa cuenta creados antes del access token. |
 | GET/POST | `/auth/validate` | Valida un JWT (lo usa el API Gateway). Headers `X-User-Id`, `X-User-Role`. Rechaza (401) los tokens emitidos antes del último cambio de contraseña. |
 | POST | `/auth/password-reset/request` · `/confirm` | Recuperación de contraseña (US-125): `request {email}` → siempre 202 con el mismo mensaje, exista o no el correo; si existe, llega el enlace `{FRONTEND_URL}/restablecer?token=…` (vence en 15 min, un solo uso). `confirm {token, nuevaPassword}` → 200; además deja el correo verificado (el enlace llegó a ese correo). Token inválido, usado o vencido → 400 `TOKEN_INVALID_OR_EXPIRED`. |
 | POST | `/auth/verify-email` | Público (US-130): `{token}` del enlace `{FRONTEND_URL}/verificar-correo?token=…` (vence en 24 h, un solo uso) → 200 y `emailVerificado = true`. Inválido, usado o vencido → 400 `TOKEN_INVALID_OR_EXPIRED`. |
@@ -29,7 +30,23 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | PUT | `/users/{id}/role` | Cambiar rol (ADMIN). OPERADOR/CONDUCTOR requieren `companyId` válido en catalog (US-101). |
 | PATCH | `/users/{id}/estado` | Suspender o reactivar (ADMIN, US-104): `{activo, motivo}`. Los tokens de una cuenta suspendida dejan de valer de inmediato (403 `ACCOUNT_SUSPENDED`). Un ADMIN no puede suspenderse a sí mismo (400 `CANNOT_SUSPEND_SELF`). |
 | GET | `/.well-known/jwks.json` | Llave pública: los demás servicios validan los JWT localmente. |
+| DELETE | `/users/{id}/lock` | Desbloquea manualmente una cuenta (ADMIN). El restablecimiento de contraseña también la desbloquea. |
 | GET | `/internal/users/{id}` | Servicio a servicio (`X-Internal-Token` = `INTERNAL_API_TOKEN`): `{id, nombre, rol, companyId, activo}`. Nunca devuelve email, documento ni `passwordHash`. Sin token o con token incorrecto → 401; inexistente → 404 `USER_NOT_FOUND`. El API Gateway no enruta `/internal/**`. |
+
+Los refresh tokens guardan únicamente el hash SHA-256 de un valor aleatorio de 256 bits en `refresh_tokens`.
+Cada renovación rota el token dentro de la misma familia; reutilizar un token consumido revoca toda la familia.
+El frontend debe guardar el refresh token fuera del alcance de scripts de terceros. Cuando el gateway sirva
+el frontend bajo el mismo dominio (Sprint 5), podrá migrarse a una cookie `HttpOnly`.
+
+| Error | Respuesta |
+|---|---|
+| `ACCOUNT_LOCKED` | 423 con header `Retry-After`; mismo comportamiento para correos existentes e inexistentes. |
+| `INVALID_REFRESH_TOKEN` | 401 si el refresh token venció o fue revocado. |
+| `REFRESH_TOKEN_REUSED` | 401; la reutilización revoca toda la familia. |
+| `ACCOUNT_SUSPENDED` | 403 al intentar renovar una cuenta suspendida. |
+
+Las familias se revocan al cerrar sesión, cambiar o restablecer la contraseña y suspender la cuenta. Un job diario
+elimina refresh tokens vencidos hace más de siete días.
 
 ### Validación de la empresa en catalog (US-101)
 
@@ -207,6 +224,10 @@ Correo (opcionales en todos los entornos, mismas variables que booking):
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | vacío | Si hay usuario se activa `AUTH` y `STARTTLS`. |
 | `MAIL_FROM` | `TripBus <no-reply@tripbus.co>` | Remitente. |
 | `FRONTEND_URL` | `http://localhost:5173` | Base de los enlaces de los correos. |
+| `IDENTITY_LOGIN_MAX_ATTEMPTS` | `5` | Intentos fallidos antes del bloqueo por email normalizado. |
+| `IDENTITY_LOGIN_WINDOW` | `15m` | Ventana de conteo de intentos de login. |
+| `IDENTITY_LOGIN_LOCKOUT` | `15m` | Duración del bloqueo de login. |
+| `IDENTITY_REFRESH_TTL` | `14d` | Vigencia del refresh token. |
 
 ## Ejecutar sin Docker
 

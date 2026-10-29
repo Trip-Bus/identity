@@ -8,6 +8,9 @@ RUN mvn -B -q package -DskipTests
 
 # ---- Etapa 2: imagen de ejecución (solo JRE) ----
 FROM eclipse-temurin:21-jre-alpine
+# Parches de seguridad de Alpine más nuevos que los de la imagen base (Trivy): CVE-2026-111497 en
+# brotli-libs (corregido en 1.2.1-r0). Se puede quitar cuando la imagen base ya los traiga.
+RUN apk upgrade --no-cache brotli-libs
 RUN addgroup -S tripbus && adduser -S tripbus -G tripbus
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar

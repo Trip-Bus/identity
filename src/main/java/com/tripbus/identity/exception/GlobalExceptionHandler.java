@@ -100,6 +100,18 @@ public class GlobalExceptionHandler {
                         Map.of(ex.getName(), "Valor no válido")));
     }
 
+    @ExceptionHandler(ContrasenaActualIncorrectaException.class)
+    public ResponseEntity<ErrorResponse> handleContrasenaActualIncorrecta(ContrasenaActualIncorrectaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_CURRENT_PASSWORD", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DemasiadasSolicitudesException.class)
+    public ResponseEntity<ErrorResponse> handleDemasiadasSolicitudes(DemasiadasSolicitudesException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ErrorResponse.of("TOO_MANY_REQUESTS", ex.getMessage()));
+    }
+
     @ExceptionHandler(TokenInvalidoOExpiradoException.class)
     public ResponseEntity<ErrorResponse> handleTokenInvalidoOExpirado(TokenInvalidoOExpiradoException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

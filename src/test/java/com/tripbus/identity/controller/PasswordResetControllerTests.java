@@ -73,8 +73,18 @@ class PasswordResetControllerTests {
         private String ultimoTokenPlano;
 
         @Override
-        public void enviarCorreoRecuperacion(String email, String tokenPlano) {
+        public void enviarCorreoRecuperacion(String email, String nombre, String tokenPlano) {
             this.ultimoTokenPlano = tokenPlano;
+        }
+
+        @Override
+        public void enviarCorreoVerificacion(String email, String nombre, String tokenPlano) {
+            // Esta prueba solo usa el enlace de recuperación.
+        }
+
+        @Override
+        public void enviarAvisoCambioContrasena(String email, String nombre) {
+            // Esta prueba solo usa el enlace de recuperación.
         }
 
         String getUltimoTokenPlano() {

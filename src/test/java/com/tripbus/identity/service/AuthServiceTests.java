@@ -48,11 +48,14 @@ class AuthServiceTests {
     @Mock
     private JwtSigner jwtSigner;
 
+    @Mock
+    private VerificacionEmailService verificacionEmailService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(usuarioRepository, passwordHasher, jwtSigner);
+        authService = new AuthService(usuarioRepository, passwordHasher, jwtSigner, verificacionEmailService);
     }
 
     @Test
@@ -71,7 +74,7 @@ class AuthServiceTests {
         when(usuarioRepository.saveAndFlush(any(Usuario.class))).thenReturn(usuarioGuardado);
 
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), eq(false), any(Duration.class)))
                 .thenReturn("token-firmado");
 
         AuthResponse response = authService.registrar(request);
@@ -84,6 +87,7 @@ class AuthServiceTests {
         verify(usuarioRepository).saveAndFlush(usuarioCaptor.capture());
         assertThat(usuarioCaptor.getValue().getRol()).isEqualTo(RolUsuario.PASAJERO);
         assertThat(usuarioCaptor.getValue().getPasswordHash()).isEqualTo("hash-argon2id");
+        verify(verificacionEmailService).enviarVerificacion(usuarioGuardado);
     }
 
     @Test
@@ -174,7 +178,7 @@ class AuthServiceTests {
         when(usuarioRepository.findByEmail(request.email())).thenReturn(Optional.of(usuario));
         when(passwordHasher.matches(request.password(), "hash-almacenado")).thenReturn(true);
         when(jwtSigner.getDefaultTtl()).thenReturn(Duration.ofMinutes(60));
-        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), any(Duration.class)))
+        when(jwtSigner.sign(eq(userId), eq(RolUsuario.PASAJERO), isNull(), eq(request.email()), eq(false), any(Duration.class)))
                 .thenReturn("token-login");
 
         AuthResponse response = authService.login(request);

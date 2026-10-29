@@ -109,7 +109,7 @@ class GestionUsuariosControllerTests {
     }
 
     private String token(Usuario u) {
-        return "Bearer " + jwtSigner.sign(u.getId(), u.getRol(), u.getCompanyId(), u.getEmail(), Duration.ofMinutes(5));
+        return "Bearer " + jwtSigner.sign(u.getId(), u.getRol(), u.getCompanyId(), u.getEmail(), false, Duration.ofMinutes(5));
     }
 
     private String crearBody(String email, String documento, String rol, UUID empresa) {
@@ -232,7 +232,7 @@ class GestionUsuariosControllerTests {
         });
         assertThat(passwordResetTokenRepository.findAll()).singleElement()
                 .satisfies(t -> assertThat(t.getUsuarioId()).isEqualTo(id));
-        verify(emailSender).enviarCorreoRecuperacion(eq("carlos@tripbus.co"), anyString());
+        verify(emailSender).enviarCorreoRecuperacion(eq("carlos@tripbus.co"), anyString(), anyString());
         verify(events).publish(eq(IdentityEventPublisher.USER_REGISTERED), any());
     }
 
@@ -242,7 +242,7 @@ class GestionUsuariosControllerTests {
                         .content(crearBody("conductor.nuevo@tripbus.co", "CC-201", "CONDUCTOR", companyId)))
                 .andExpect(status().isCreated());
         ArgumentCaptor<String> tokenPlano = ArgumentCaptor.forClass(String.class);
-        verify(emailSender).enviarCorreoRecuperacion(eq("conductor.nuevo@tripbus.co"), tokenPlano.capture());
+        verify(emailSender).enviarCorreoRecuperacion(eq("conductor.nuevo@tripbus.co"), anyString(), tokenPlano.capture());
 
         mockMvc.perform(post("/auth/password-reset/confirm").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"%s\",\"nuevaPassword\":\"Conductor1\"}".formatted(tokenPlano.getValue())))
@@ -308,7 +308,7 @@ class GestionUsuariosControllerTests {
                 .andExpect(jsonPath("$.error.code").value("CATALOG_UNAVAILABLE"));
 
         assertThat(usuarioRepository.existsByEmail("e1@tripbus.co")).isFalse();
-        verify(emailSender, never()).enviarCorreoRecuperacion(any(), any());
+        verify(emailSender, never()).enviarCorreoRecuperacion(any(), any(), any());
     }
 
     // --- US-101 ---

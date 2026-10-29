@@ -24,11 +24,14 @@ public class AuthService {
     private final UsuarioRepository usuarioRepository;
     private final PasswordHasher passwordHasher;
     private final JwtSigner jwtSigner;
+    private final VerificacionEmailService verificacionEmailService;
 
-    public AuthService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, JwtSigner jwtSigner) {
+    public AuthService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, JwtSigner jwtSigner,
+                       VerificacionEmailService verificacionEmailService) {
         this.usuarioRepository = usuarioRepository;
         this.passwordHasher = passwordHasher;
         this.jwtSigner = jwtSigner;
+        this.verificacionEmailService = verificacionEmailService;
     }
 
     @Transactional
@@ -58,6 +61,8 @@ public class AuthService {
             throw ConflictosUnicidad.traducir(ex);
         }
 
+        // US-130: el correo de verificación no bloquea el registro ni el login.
+        verificacionEmailService.enviarVerificacion(usuario);
         return emitirRespuesta(usuario);
     }
 
@@ -79,10 +84,12 @@ public class AuthService {
         return emitirRespuesta(usuario);
     }
 
-    private AuthResponse emitirRespuesta(Usuario usuario) {
+    /** También lo usa CuentaService: tras cambiar la contraseña la sesión actual sigue con un token nuevo. */
+    AuthResponse emitirRespuesta(Usuario usuario) {
         Duration ttl = jwtSigner.getDefaultTtl();
         Instant expiresAt = Instant.now().plus(ttl);
-        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), usuario.getEmail(), ttl);
+        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(),
+                usuario.getEmail(), usuario.isEmailVerificado(), ttl);
         return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol());
     }
 }

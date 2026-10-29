@@ -1,11 +1,13 @@
 package com.tripbus.identity.service;
 
+import com.tripbus.identity.events.CambioContrasenaPublisher;
 import com.tripbus.identity.exception.TokenInvalidoOExpiradoException;
 import com.tripbus.identity.model.PasswordResetToken;
 import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.notification.EmailSender;
 import com.tripbus.identity.repository.PasswordResetTokenRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
+import com.tripbus.identity.security.GeneradorTokens;
 import com.tripbus.identity.security.PasswordHasher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,12 +46,16 @@ class PasswordResetServiceTests {
     @Mock
     private EmailSender emailSender;
 
+    @Mock
+    private CambioContrasenaPublisher cambioContrasenaPublisher;
+
     private PasswordResetService passwordResetService;
 
     @BeforeEach
     void setUp() {
         passwordResetService = new PasswordResetService(
-                usuarioRepository, passwordResetTokenRepository, passwordHasher, emailSender);
+                usuarioRepository, passwordResetTokenRepository, passwordHasher, emailSender, new GeneradorTokens(),
+                cambioContrasenaPublisher);
     }
 
     @Test
@@ -72,7 +78,7 @@ class PasswordResetServiceTests {
         assertThat(guardado.getExpiresAt()).isBetween(
                 antes.plus(Duration.ofMinutes(15)), despues.plus(Duration.ofMinutes(15)));
 
-        verify(emailSender).enviarCorreoRecuperacion(eq("usuario@tripbus.com"), anyString());
+        verify(emailSender).enviarCorreoRecuperacion(eq("usuario@tripbus.com"), any(), anyString());
     }
 
     @Test
@@ -83,7 +89,7 @@ class PasswordResetServiceTests {
 
         passwordResetService.solicitarRecuperacion("  Ana@Mail.COM ");
 
-        verify(emailSender).enviarCorreoRecuperacion(eq("ana@mail.com"), anyString());
+        verify(emailSender).enviarCorreoRecuperacion(eq("ana@mail.com"), any(), anyString());
     }
 
     @Test
@@ -93,7 +99,7 @@ class PasswordResetServiceTests {
         passwordResetService.solicitarRecuperacion("noexiste@tripbus.com");
 
         verify(passwordResetTokenRepository, never()).save(any());
-        verify(emailSender, never()).enviarCorreoRecuperacion(any(), any());
+        verify(emailSender, never()).enviarCorreoRecuperacion(any(), any(), any());
     }
 
     @Test
@@ -117,6 +123,8 @@ class PasswordResetServiceTests {
         verify(usuarioRepository).save(usuario);
         verify(resetToken).setUsedAt(any(Instant.class));
         verify(passwordResetTokenRepository).save(resetToken);
+        verify(usuario).setEmailVerificado(true);
+        verify(cambioContrasenaPublisher).publicarCambio(any(), any(Instant.class));
     }
 
     @Test

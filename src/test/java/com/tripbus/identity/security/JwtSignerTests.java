@@ -34,7 +34,7 @@ class JwtSignerTests {
         UUID userId = UUID.randomUUID();
         UUID companyId = UUID.randomUUID();
 
-        String token = jwtSigner.sign(userId, RolUsuario.OPERADOR, companyId, "operador@tripbus.com", Duration.ofMinutes(5));
+        String token = jwtSigner.sign(userId, RolUsuario.OPERADOR, companyId, "operador@tripbus.com", false, Duration.ofMinutes(5));
 
         Jws<Claims> parsed = Jwts.parser()
                 .verifyWith(keyProvider.getPublicKey())
@@ -50,7 +50,7 @@ class JwtSignerTests {
 
     @Test
     void companyIdClaimIsOmittedWhenItIsNull() {
-        String token = jwtSigner.sign(UUID.randomUUID(), RolUsuario.PASAJERO, null, null, Duration.ofMinutes(5));
+        String token = jwtSigner.sign(UUID.randomUUID(), RolUsuario.PASAJERO, null, null, false, Duration.ofMinutes(5));
 
         Jws<Claims> parsed = Jwts.parser()
                 .verifyWith(keyProvider.getPublicKey())
@@ -62,7 +62,7 @@ class JwtSignerTests {
 
     @Test
     void aTokenWithAnExpirationInThePastFailsVerification() {
-        String token = jwtSigner.sign(UUID.randomUUID(), RolUsuario.PASAJERO, null, null, Duration.ofMinutes(-5));
+        String token = jwtSigner.sign(UUID.randomUUID(), RolUsuario.PASAJERO, null, null, false, Duration.ofMinutes(-5));
 
         JwtParser parser = Jwts.parser().verifyWith(keyProvider.getPublicKey()).build();
 

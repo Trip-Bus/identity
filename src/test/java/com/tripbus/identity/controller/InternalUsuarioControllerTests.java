@@ -100,7 +100,7 @@ class InternalUsuarioControllerTests {
                 "CC-" + UUID.randomUUID(), "Admin");
         admin.setRol(RolUsuario.ADMIN);
         admin = usuarioRepository.save(admin);
-        String jwt = jwtSigner.sign(admin.getId(), RolUsuario.ADMIN, null, admin.getEmail(), Duration.ofMinutes(5));
+        String jwt = jwtSigner.sign(admin.getId(), RolUsuario.ADMIN, null, admin.getEmail(), false, Duration.ofMinutes(5));
 
         mockMvc.perform(get("/internal/users/" + conductor.getId()).header("Authorization", "Bearer " + jwt))
                 .andExpect(status().isForbidden());

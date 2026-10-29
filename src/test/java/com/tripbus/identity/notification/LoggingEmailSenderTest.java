@@ -11,13 +11,14 @@ import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** El token de recuperación de contraseña nunca debe quedar en logs INFO (PROD). */
+/** Sin SMTP: los tokens de recuperación y verificación nunca deben quedar en logs INFO (PROD). */
 class LoggingEmailSenderTest {
 
     private static final String TOKEN = "token-secreto-123";
 
     private final Logger logger = (Logger) LoggerFactory.getLogger(LoggingEmailSender.class);
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    private final LoggingEmailSender sender = new LoggingEmailSender(new PlantillasCorreo("http://localhost:5173"));
     private Level nivelOriginal;
 
     @BeforeEach
@@ -37,28 +38,56 @@ class LoggingEmailSenderTest {
     void enInfoSoloDiceElCorreoSinToken() {
         logger.setLevel(Level.INFO);
 
-        new LoggingEmailSender().enviarCorreoRecuperacion("ana@tripbus.co", TOKEN);
+        sender.enviarCorreoRecuperacion("ana@tripbus.co", "Ana", TOKEN);
+        sender.enviarCorreoVerificacion("ana@tripbus.co", "Ana", TOKEN);
 
-        assertThat(appender.list).hasSize(1);
-        assertThat(appender.list.get(0).getLevel()).isEqualTo(Level.INFO);
-        assertThat(appender.list.get(0).getFormattedMessage())
-                .contains("ana@tripbus.co")
-                .doesNotContain(TOKEN);
+        assertThat(appender.list).hasSize(2).allSatisfy(evento -> {
+            assertThat(evento.getLevel()).isEqualTo(Level.INFO);
+            assertThat(evento.getFormattedMessage()).contains("ana@tripbus.co").doesNotContain(TOKEN);
+        });
     }
 
     @Test
-    void elTokenSoloApareceEnDebug() {
+    void elEnlaceDeRecuperacionConElTokenSoloApareceEnDebug() {
         logger.setLevel(Level.DEBUG);
 
-        new LoggingEmailSender().enviarCorreoRecuperacion("ana@tripbus.co", TOKEN);
+        sender.enviarCorreoRecuperacion("ana@tripbus.co", "Ana", TOKEN);
 
         assertThat(appender.list)
                 .filteredOn(evento -> evento.getFormattedMessage().contains(TOKEN))
                 .singleElement()
-                .extracting(ILoggingEvent::getLevel)
-                .isEqualTo(Level.DEBUG);
+                .satisfies(evento -> {
+                    assertThat(evento.getLevel()).isEqualTo(Level.DEBUG);
+                    assertThat(evento.getFormattedMessage())
+                            .contains("http://localhost:5173/restablecer?token=" + TOKEN);
+                });
+    }
+
+    @Test
+    void elEnlaceDeVerificacionConElTokenSoloApareceEnDebug() {
+        logger.setLevel(Level.DEBUG);
+
+        sender.enviarCorreoVerificacion("ana@tripbus.co", "Ana", TOKEN);
+
         assertThat(appender.list)
-                .filteredOn(evento -> evento.getLevel() == Level.INFO)
-                .allSatisfy(evento -> assertThat(evento.getFormattedMessage()).doesNotContain(TOKEN));
+                .filteredOn(evento -> evento.getFormattedMessage().contains(TOKEN))
+                .singleElement()
+                .satisfies(evento -> {
+                    assertThat(evento.getLevel()).isEqualTo(Level.DEBUG);
+                    assertThat(evento.getFormattedMessage())
+                            .contains("http://localhost:5173/verificar-correo?token=" + TOKEN);
+                });
+    }
+
+    @Test
+    void elAvisoDeCambioDeContrasenaQuedaEnInfo() {
+        logger.setLevel(Level.INFO);
+
+        sender.enviarAvisoCambioContrasena("ana@tripbus.co", "Ana");
+
+        assertThat(appender.list).singleElement().satisfies(evento -> {
+            assertThat(evento.getLevel()).isEqualTo(Level.INFO);
+            assertThat(evento.getFormattedMessage()).contains("Aviso de cambio de contraseña", "ana@tripbus.co");
+        });
     }
 }

@@ -31,15 +31,16 @@
         <nimbus-jose-jwt.version>10.9.1</nimbus-jose-jwt.version>
         <springdoc.version>2.8.17</springdoc.version>
         <logstash-logback.version>8.0</logstash-logback.version>
+        <greenmail.version>2.1.3</greenmail.version>
         <jacoco.version>0.8.12</jacoco.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 
         <!-- Mínimos de cobertura total que exige jacoco:check (ver jacoco-maven-plugin).
              La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.
-             Fijados con la medición del 2026-10-22 (US-101 a US-104) redondeada hacia abajo al 5 %: líneas 91,5 % -> 0.90;
-             ramas 83,5 % -> 0.80. -->
-        <jacoco.minimo.lineas>0.90</jacoco.minimo.lineas>
-        <jacoco.minimo.ramas>0.80</jacoco.minimo.ramas>
+             Fijados con la medición del 2026-10-28 (US-125, US-128 a US-130) redondeada hacia abajo al 5 %: líneas 96,5 % -> 0.95;
+             ramas 87,1 % -> 0.85. -->
+        <jacoco.minimo.lineas>0.95</jacoco.minimo.lineas>
+        <jacoco.minimo.ramas>0.85</jacoco.minimo.ramas>
 
         <!-- SonarQube Cloud: el análisis lo lanza el CI solo en develop (push y PR con base develop)
              cuando existe el secreto SONAR_TOKEN. El plan Free analiza una única rama. -->
@@ -112,6 +113,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Correo SMTP (US-125, US-129, US-130). Sin MAIL_HOST se usa LoggingEmailSender. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
 
         <dependency>
@@ -199,6 +206,14 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Servidor SMTP en memoria para probar el envío real de correos (CuentaYCorreoIT). -->
+        <dependency>
+            <groupId>com.icegreen</groupId>
+            <artifactId>greenmail-junit5</artifactId>
+            <version>${greenmail.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

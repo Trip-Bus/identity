@@ -225,6 +225,50 @@ class IdentityPostgresIT {
         }
     }
 
+    /** US-130: V8 deja verificados a los usuarios que ya existían (QA y demo) y los nuevos quedan sin verificar. */
+    @Test
+    void migracionV8DejaVerificadosALosUsuariosExistentes() throws Exception {
+        String esquema = "v8_verificados";
+        flywayEnEsquema(esquema, "5").migrate();
+        insertarUsuario(esquema, "existente@mail.com", "CC-V8-1");
+
+        flywayEnEsquema(esquema, "8").migrate();
+        try (Connection c = conexion(); Statement s = c.createStatement()) {
+            s.executeUpdate("INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad,"
+                    + " nombre, fecha_creacion, fecha_actualizacion, busqueda) VALUES ('" + UUID.randomUUID()
+                    + "', 'nuevo@mail.com', 'hash', 'CC-V8-2', 'V8', now(), now(), 'v8')");
+        }
+
+        try (Connection c = conexion(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT email, email_verificado, email_verificado_en FROM " + esquema
+                     + ".usuarios ORDER BY email")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("existente@mail.com");
+            assertThat(rs.getBoolean(2)).isTrue();
+            assertThat(rs.getTimestamp(3)).isNotNull();
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("nuevo@mail.com");
+            assertThat(rs.getBoolean(2)).isFalse();
+            assertThat(rs.getTimestamp(3)).isNull();
+        }
+    }
+
+    /** US-128: la BD también rechaza un teléfono que no sea un celular colombiano. */
+    @Test
+    void migracionV7SoloAceptaCelularesColombianos() throws Exception {
+        String esquema = "v7_telefono";
+        flywayEnEsquema(esquema, "5").migrate();
+        insertarUsuario(esquema, "tel@mail.com", "CC-V7-1");
+        flywayEnEsquema(esquema, "7").migrate();
+
+        try (Connection c = conexion(); Statement s = c.createStatement()) {
+            assertThat(s.executeUpdate("UPDATE " + esquema + ".usuarios SET telefono = '3001234567'")).isEqualTo(1);
+            assertThatThrownBy(() -> s.executeUpdate("UPDATE " + esquema + ".usuarios SET telefono = '6011234567'"))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("ck_usuarios_telefono");
+        }
+    }
+
     private static Flyway flywayEnEsquema(String esquema, String version) {
         return Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())

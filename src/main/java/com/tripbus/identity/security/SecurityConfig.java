@@ -48,6 +48,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
+                        // US-130: verificar con el token del correo es público; /resend exige sesión.
+                        .requestMatchers(HttpMethod.POST, "/auth/verify-email").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/actuator/prometheus").permitAll()

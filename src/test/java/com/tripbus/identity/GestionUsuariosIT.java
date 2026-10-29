@@ -140,7 +140,7 @@ class GestionUsuariosIT {
 
     private HttpHeaders auth(Usuario u) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(jwtSigner.sign(u.getId(), u.getRol(), u.getCompanyId(), u.getEmail(), Duration.ofMinutes(5)));
+        headers.setBearerAuth(jwtSigner.sign(u.getId(), u.getRol(), u.getCompanyId(), u.getEmail(), false, Duration.ofMinutes(5)));
         return headers;
     }
 

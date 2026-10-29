@@ -85,6 +85,16 @@ tripbus:
   events:
     enabled: ${EVENTS_ENABLED:true}
     stream: ${EVENTS_STREAM:tripbus:events}
+  # Enlaces de los correos (recuperación, verificación y aviso de cambio de contraseña).
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  # SMTP, mismas variables que booking. Sin MAIL_HOST no se envía nada: LoggingEmailSender deja el
+  # enlace en el log (solo en DEBUG). No es obligatoria en ningún entorno.
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    from: "${MAIL_FROM:TripBus <no-reply@tripbus.co>}"
   demo-users:
     enabled: ${DEMO_USERS_ENABLED:false}
     password: ${DEMO_USERS_PASSWORD:TripBus2026}

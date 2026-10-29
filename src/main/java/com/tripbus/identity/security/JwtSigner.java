@@ -28,7 +28,8 @@ public class JwtSigner {
         return defaultTtl;
     }
 
-    public String sign(UUID userId, RolUsuario rol, UUID companyId, String email, Duration ttl) {
+    public String sign(UUID userId, RolUsuario rol, UUID companyId, String email, boolean emailVerificado,
+                       Duration ttl) {
         Duration effectiveTtl = ttl != null ? ttl : defaultTtl;
         Instant now = Instant.now();
 
@@ -38,6 +39,8 @@ public class JwtSigner {
                 .subject(userId.toString())
                 .claim("role", rol.name())
                 .claim("email", email)
+                // US-130: informativo; no verificar el correo no bloquea el login.
+                .claim("emailVerificado", emailVerificado)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(effectiveTtl)));
 

@@ -67,9 +67,20 @@ management:
   metrics:
     tags:
       application: identity
+  # HT-10: trazas. El exportador OTLP solo existe si hay OTEL_EXPORTER_OTLP_ENDPOINT (lo resuelve
+  # config.ObservabilidadEnvironment); sin él los spans no salen del proceso.
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING:0.1}
   info:
     env:
       enabled: true
+
+# Logs: texto legible por defecto (como antes), con requestId, traceId y spanId en cada línea.
+# Con LOG_FORMAT=json se usa ECS (una línea JSON por evento, ver config.ObservabilidadEnvironment).
+logging:
+  pattern:
+    console: "%clr(%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}){faint} %clr(%5p) %clr([%X{requestId:-}]){magenta} %clr([%X{traceId:-},%X{spanId:-}]){blue} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"
 
 # /actuator/info: commit con el que se construyó la imagen (build-arg GIT_COMMIT del Dockerfile).
 info:
@@ -77,6 +88,10 @@ info:
     commit: ${APP_COMMIT:local}
 
 tripbus:
+  # Swagger del API Gateway: con OPENAPI_SERVER_URL (p. ej. http://localhost:18000) "Try it out" va por
+  # el gateway. Vacío = el servidor desde el que se abre Swagger (como antes).
+  openapi:
+    server-url: ${OPENAPI_SERVER_URL:}
   # Secreto compartido de las llamadas servicio a servicio (/internal/**, header X-Internal-Token).
   internal-token: ${INTERNAL_API_TOKEN:tripbus_internal_qa_token}
   services:
@@ -87,8 +102,8 @@ tripbus:
     stream: ${EVENTS_STREAM:tripbus:events}
   # Enlaces de los correos (recuperación, verificación y aviso de cambio de contraseña).
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
-  # SMTP, mismas variables que booking. Sin MAIL_HOST no se envía nada: LoggingEmailSender deja el
-  # enlace en el log (solo en DEBUG). No es obligatoria en ningún entorno.
+  # SMTP, mismas variables que booking. Sin MAIL_HOST no se envía nada: LoggingEmailSender solo deja
+  # constancia en el log (correo enmascarado, nunca el enlace). No es obligatoria en ningún entorno.
   mail:
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:1025}
@@ -104,3 +119,9 @@ tripbus:
       window: ${IDENTITY_LOGIN_WINDOW:15m}
       lockout: ${IDENTITY_LOGIN_LOCKOUT:15m}
     refresh-ttl: ${IDENTITY_REFRESH_TTL:14d}
+    # US-106: verificación en dos pasos (TOTP). La llave cifra los secretos (AES-GCM); obligatoria en
+    # qa/prod. Vacía (solo IDE y pruebas) = llave aleatoria por arranque: la 2FA no sobrevive reinicios.
+    mfa:
+      encryption-key: ${MFA_ENCRYPTION_KEY:}
+      # Roles que deben activar la 2FA antes de usar la API (p. ej. ADMIN o ADMIN,OPERADOR).
+      required-roles: ${MFA_REQUIRED_ROLES:}

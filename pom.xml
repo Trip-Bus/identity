@@ -30,7 +30,6 @@
         <jjwt.version>0.13.0</jjwt.version>
         <nimbus-jose-jwt.version>10.9.1</nimbus-jose-jwt.version>
         <springdoc.version>2.8.17</springdoc.version>
-        <logstash-logback.version>8.0</logstash-logback.version>
         <greenmail.version>2.1.3</greenmail.version>
         <jacoco.version>0.8.12</jacoco.version>
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
@@ -165,11 +164,16 @@
             <version>${springdoc.version}</version>
         </dependency>
 
-        <!-- Logs en JSON en PROD (logback-spring.xml). -->
+        <!-- HT-10: trazas distribuidas (Micrometer Tracing + OpenTelemetry) exportadas por OTLP a
+             OTEL_EXPORTER_OTLP_ENDPOINT; vacío = sin exportador. Versiones gestionadas por Spring Boot. -->
         <dependency>
-            <groupId>net.logstash.logback</groupId>
-            <artifactId>logstash-logback-encoder</artifactId>
-            <version>${logstash-logback.version}</version>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
         <dependency>
@@ -248,13 +252,37 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <!-- Unitarias (*Test, *Tests) e integración (*IT, Testcontainers: requiere Docker). -->
+                    <!-- Solo unitarias (*Test, *Tests); las *IT (Testcontainers) van en failsafe,
+                         fase integration-test, para que su JVM y la caché de contextos de Spring
+                         no convivan con las 15 clases unitarias en el mismo fork. -->
                     <includes>
                         <include>**/*Test.java</include>
                         <include>**/*Tests.java</include>
+                    </includes>
+                    <!-- @{argLine} lo rellena jacoco:prepare-agent con el javaagent; -Xmx900m evita que
+                         el heap por ergonomía (~1.8G) agote la RAM nativa junto a los contenedores. -->
+                    <argLine>@{argLine} -Xmx900m</argLine>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <!-- Integración (*IT, Testcontainers: requiere Docker). -->
+                    <includes>
                         <include>**/*IT.java</include>
                     </includes>
+                    <argLine>@{argLine} -Xmx900m</argLine>
                 </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- Cobertura: target/site/jacoco/index.html (y jacoco.xml para Sonar).
@@ -277,6 +305,16 @@
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <!-- Mismo destFile (target/jacoco.exec) que prepare-agent, en modo append (por
+                         defecto): la cobertura de las *IT (failsafe) se suma a la de las *Test/*Tests
+                         (surefire) para el report/check únicos de más abajo. -->
+                    <execution>
+                        <id>prepare-agent-integration</id>
+                        <phase>pre-integration-test</phase>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>

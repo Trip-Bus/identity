@@ -1,5 +1,6 @@
 package com.tripbus.identity.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tripbus.identity.repository.SesionRevocadaRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -40,12 +42,15 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, PoliticaMfa politicaMfa,
+                                                   ObjectMapper objectMapper) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/refresh").permitAll()
+                        // US-106: segundo paso del login (lleva el mfaToken, todavía no hay JWT).
+                        .requestMatchers(HttpMethod.POST, "/auth/2fa").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
                         // US-130: verificar con el token del correo es público; /resend exige sesión.
@@ -68,7 +73,9 @@ public class SecurityConfig {
                         new JwtAuthenticationFilter(jwtKeyProvider, usuarioRepository, sesionRevocadaRepository),
                         UsernamePasswordAuthenticationFilter.class)
                 // Misma posición que el filtro JWT y agregado después: corre después de él.
-                .addFilterBefore(new InternalTokenFilter(internalToken), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new InternalTokenFilter(internalToken), UsernamePasswordAuthenticationFilter.class)
+                // US-106: con el usuario ya autenticado y antes de autorizar la ruta.
+                .addFilterBefore(new MfaObligatoriaFilter(politicaMfa, objectMapper), AuthorizationFilter.class);
 
         return http.build();
     }

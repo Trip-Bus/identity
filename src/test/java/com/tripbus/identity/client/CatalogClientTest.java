@@ -1,6 +1,9 @@
 package com.tripbus.identity.client;
 
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationHandler;
+import io.micrometer.observation.ObservationRegistry;
 import com.tripbus.identity.config.RequestIdFilter;
 import com.tripbus.identity.exception.CatalogNoDisponibleException;
 import com.tripbus.identity.exception.EmpresaInactivaException;
@@ -9,6 +12,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,7 +22,9 @@ import org.springframework.web.client.RestClient;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -153,5 +159,60 @@ class CatalogClientTest {
         } finally {
             lento.stop(0);
         }
+    }
+
+    /** HT-10: con el ObservationRegistry de Spring la llamada a catalog es una observación (span hijo). */
+    @Test
+    void conObservationRegistryCadaLlamadaACatalogQuedaObservada() throws Exception {
+        List<String> observaciones = new CopyOnWriteArrayList<>();
+        ObservationRegistry registry = ObservationRegistry.create();
+        registry.observationConfig().observationHandler(new ObservationHandler<>() {
+            @Override
+            public boolean supportsContext(Observation.Context context) {
+                return true;
+            }
+
+            @Override
+            public void onStart(Observation.Context context) {
+                observaciones.add(context.getName());
+            }
+        });
+        DefaultListableBeanFactory beans = new DefaultListableBeanFactory();
+        beans.registerSingleton("observationRegistry", registry);
+
+        HttpServer catalog = catalogQueResponde(empresa("ACTIVA"));
+        try {
+            CatalogClient conTrazas = new CatalogClient("http://127.0.0.1:" + catalog.getAddress().getPort(), TOKEN,
+                    beans.getBeanProvider(ObservationRegistry.class));
+            assertThatCode(() -> conTrazas.validarEmpresaActiva(companyId)).doesNotThrowAnyException();
+        } finally {
+            catalog.stop(0);
+        }
+        assertThat(observaciones).contains("http.client.requests");
+    }
+
+    @Test
+    void sinObservationRegistryFuncionaIgual() throws Exception {
+        HttpServer catalog = catalogQueResponde(empresa("ACTIVA"));
+        try {
+            CatalogClient sinTrazas = new CatalogClient("http://127.0.0.1:" + catalog.getAddress().getPort(), TOKEN,
+                    new DefaultListableBeanFactory().getBeanProvider(ObservationRegistry.class));
+            assertThatCode(() -> sinTrazas.validarEmpresaActiva(companyId)).doesNotThrowAnyException();
+        } finally {
+            catalog.stop(0);
+        }
+    }
+
+    private static HttpServer catalogQueResponde(String cuerpo) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/internal/companies/", exchange -> {
+            byte[] bytes = cuerpo.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        return server;
     }
 }

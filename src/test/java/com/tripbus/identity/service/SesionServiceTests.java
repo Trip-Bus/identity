@@ -51,6 +51,15 @@ class SesionServiceTests {
         service.registrarConsentimiento(userId); service.registrarConsentimientoPorAdmin(userId,UUID.randomUUID());
         verify(consents,times(2)).save(any(Consentimiento.class));
     }
+    /** US-131: consentimientos para exportar y retiro al eliminar la cuenta. */
+    @Test void consentsAreListedAndRevokedForDataRequests() {
+        SesionService service=new SesionService(revoked,consents,keys,publisher,refresh);
+        Consentimiento c=new Consentimiento(userId,"POLITICA_TRATAMIENTO_DATOS","1.0",Instant.now());
+        when(consents.findByUsuarioId(userId)).thenReturn(java.util.List.of(c));
+        when(consents.revocarVigentes(eq(userId),any(Instant.class))).thenReturn(1);
+        org.assertj.core.api.Assertions.assertThat(service.consentimientos(userId)).containsExactly(c);
+        org.assertj.core.api.Assertions.assertThat(service.revocarConsentimientos(userId)).isEqualTo(1);
+    }
     private String token(String jti,Instant issued,Instant expires) {
         var builder=Jwts.builder().subject(userId.toString()).issuedAt(java.util.Date.from(issued))
                 .expiration(java.util.Date.from(expires));

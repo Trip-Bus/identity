@@ -80,8 +80,9 @@ public class UsuarioController {
     @PutMapping("/{id}/role")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UsuarioResponse> cambiarRol(
-            @PathVariable UUID id, @Valid @RequestBody CambiarRolRequest request) {
-        return ResponseEntity.ok(usuarioService.cambiarRol(id, request));
+            @PathVariable UUID id, @Valid @RequestBody CambiarRolRequest request,
+            @AuthenticationPrincipal UsuarioAutenticado actual) {
+        return ResponseEntity.ok(usuarioService.cambiarRol(id, request, actual.userId()));
     }
 
     /** US-104: suspender (activo=false) o reactivar (activo=true) una cuenta (ADMIN). */
@@ -95,8 +96,9 @@ public class UsuarioController {
 
     @DeleteMapping("/{id}/lock")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> desbloquear(@PathVariable UUID id) {
-        usuarioService.desbloquear(id);
+    public ResponseEntity<Void> desbloquear(@PathVariable UUID id,
+                                            @AuthenticationPrincipal UsuarioAutenticado actual) {
+        usuarioService.desbloquear(id, actual.userId());
         return ResponseEntity.noContent().build();
     }
 

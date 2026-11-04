@@ -1,5 +1,6 @@
 package com.tripbus.identity.repository;
 
+import com.tripbus.identity.model.RolUsuario;
 import com.tripbus.identity.model.Usuario;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -19,4 +20,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID>, JpaSpec
     boolean existsByEmail(@Param("email") String email);
 
     boolean existsByDocumentoIdentidad(String documentoIdentidad);
+
+    /** US-131: el único ADMIN activo no puede eliminar su cuenta. */
+    long countByRolAndActivoTrue(RolUsuario rol);
 }

@@ -78,7 +78,9 @@ class SmtpEmailSenderTest {
 
         assertThat(appender.list).singleElement().satisfies(evento -> {
             assertThat(evento.getLevel()).isEqualTo(Level.INFO);
-            assertThat(evento.getFormattedMessage()).contains("ana@tripbus.co").doesNotContain(TOKEN);
+            // HT-10: el correo va enmascarado en el log.
+            assertThat(evento.getFormattedMessage()).contains("a***@tripbus.co")
+                    .doesNotContain("ana@tripbus.co").doesNotContain(TOKEN);
         });
     }
 
@@ -110,7 +112,7 @@ class SmtpEmailSenderTest {
         assertThat(appender.list).singleElement().satisfies(evento -> {
             assertThat(evento.getLevel()).isEqualTo(Level.WARN);
             assertThat(evento.getFormattedMessage())
-                    .contains("No se pudo enviar", "ana@tripbus.co", "Connection refused")
+                    .contains("No se pudo enviar", "a***@tripbus.co", "Connection refused")
                     .doesNotContain(TOKEN);
         });
     }

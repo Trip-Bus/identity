@@ -127,6 +127,18 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("TOO_MANY_REQUESTS", ex.getMessage()));
     }
 
+    /** US-131: el único ADMIN activo no puede eliminar su cuenta. */
+    @ExceptionHandler(UltimoAdminException.class)
+    public ResponseEntity<ErrorResponse> handleUltimoAdmin(UltimoAdminException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("LAST_ADMIN", ex.getMessage()));
+    }
+
+    /** US-106: cada error de la verificación en dos pasos trae su status y código. */
+    @ExceptionHandler(MfaException.class)
+    public ResponseEntity<ErrorResponse> handleMfa(MfaException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(ErrorResponse.of(ex.getCode(), ex.getMessage()));
+    }
+
     @ExceptionHandler(TokenInvalidoOExpiradoException.class)
     public ResponseEntity<ErrorResponse> handleTokenInvalidoOExpirado(TokenInvalidoOExpiradoException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

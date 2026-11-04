@@ -11,6 +11,7 @@ import com.tripbus.identity.security.JwtSigner;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,6 +77,11 @@ public class RefreshTokenService {
         if (removed>0) log.info("Refresh tokens expirados eliminados: {}", removed);
     }
     public Duration ttl(){return ttl;}
+    /** US-131: el refresh token vigente de cada familia, es decir, cada sesión abierta (sin el hash). */
+    @Transactional(readOnly = true)
+    public List<RefreshToken> sesionesActivas(UUID userId) {
+        return repository.findByUserIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(userId, Instant.now());
+    }
     private AuthResponse accessResponse(Usuario user, Issued refresh) {
         Duration accessTtl=signer.getDefaultTtl(); Instant expires=Instant.now().plus(accessTtl);
         String access=signer.sign(user.getId(), user.getRol(), user.getCompanyId(), user.getEmail(),

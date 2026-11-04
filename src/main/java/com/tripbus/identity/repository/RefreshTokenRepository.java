@@ -17,6 +17,8 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     @Query("select t from RefreshToken t where t.tokenHash = :hash")
     Optional<RefreshToken> findLockedByHash(@Param("hash") String hash);
     List<RefreshToken> findByUserIdAndCreatedAtLessThanEqualAndRevokedAtIsNull(UUID userId, Instant cutoff);
+    /** US-131: el token vigente de cada familia (sesión abierta): sin usar, sin revocar y sin vencer. */
+    List<RefreshToken> findByUserIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(UUID userId, Instant now);
     @Modifying @Query("update RefreshToken t set t.revokedAt=:at where t.userId=:userId and t.revokedAt is null")
     int revokeAll(@Param("userId") UUID userId, @Param("at") Instant at);
     @Modifying @Query("update RefreshToken t set t.revokedAt=:at where t.familyId=:familyId and t.revokedAt is null")

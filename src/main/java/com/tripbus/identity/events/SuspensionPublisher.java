@@ -58,6 +58,25 @@ public class SuspensionPublisher {
         }
     }
 
+    /**
+     * US-131: la cuenta se eliminó (anonimizada e inactiva para siempre). Deja la misma clave que una
+     * suspensión, para que el Realtime Gateway cierre sus conexiones, y publica UserDeleted (booking
+     * anonimiza sus propios datos con ese evento).
+     */
+    public void publicarEliminacion(UUID userId) {
+        if (!enabled) {
+            return;
+        }
+        try {
+            redis.opsForValue().set(PREFIJO_CLAVE + userId, "1");
+        } catch (Exception e) {
+            log.warn("No se pudo guardar la eliminación del usuario {} en Redis: {}", userId, e.getMessage());
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", userId);
+        events.publish(IdentityEventPublisher.USER_DELETED, payload);
+    }
+
     /** @param cambio false si la cuenta ya estaba activa: se borra la clave pero no se repite el evento. */
     public void publicarReactivacion(UUID userId, String motivo, boolean cambio) {
         if (!enabled) {

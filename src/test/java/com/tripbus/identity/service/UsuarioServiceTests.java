@@ -98,7 +98,7 @@ class UsuarioServiceTests {
         when(usuarioRepository.findById(id)).thenReturn(Optional.of(u));
         when(usuarioRepository.save(u)).thenReturn(u);
 
-        UsuarioResponse r = service.cambiarRol(id, new CambiarRolRequest(RolUsuario.OPERADOR, companyId));
+        UsuarioResponse r = service.cambiarRol(id, new CambiarRolRequest(RolUsuario.OPERADOR, companyId), adminId);
 
         verify(catalogClient).validarEmpresaActiva(companyId);
         assertThat(r.rol()).isEqualTo(RolUsuario.OPERADOR);
@@ -110,7 +110,7 @@ class UsuarioServiceTests {
         UUID id = UUID.randomUUID();
         when(usuarioRepository.findById(id)).thenReturn(Optional.of(usuario(true)));
 
-        assertThatThrownBy(() -> service.cambiarRol(id, new CambiarRolRequest(RolUsuario.CONDUCTOR, null)))
+        assertThatThrownBy(() -> service.cambiarRol(id, new CambiarRolRequest(RolUsuario.CONDUCTOR, null), adminId))
                 .isInstanceOf(CompanyIdRequeridoException.class);
         verifyNoInteractions(catalogClient);
         verify(usuarioRepository, never()).save(any());
@@ -122,7 +122,7 @@ class UsuarioServiceTests {
         when(usuarioRepository.findById(id)).thenReturn(Optional.of(usuario(true)));
         doThrow(new EmpresaInactivaException()).when(catalogClient).validarEmpresaActiva(companyId);
 
-        assertThatThrownBy(() -> service.cambiarRol(id, new CambiarRolRequest(RolUsuario.OPERADOR, companyId)))
+        assertThatThrownBy(() -> service.cambiarRol(id, new CambiarRolRequest(RolUsuario.OPERADOR, companyId), adminId))
                 .isInstanceOf(EmpresaInactivaException.class);
         verify(usuarioRepository, never()).save(any());
     }
@@ -136,7 +136,7 @@ class UsuarioServiceTests {
         when(usuarioRepository.findById(id)).thenReturn(Optional.of(u));
         when(usuarioRepository.save(u)).thenReturn(u);
 
-        UsuarioResponse r = service.cambiarRol(id, new CambiarRolRequest(RolUsuario.PASAJERO, companyId));
+        UsuarioResponse r = service.cambiarRol(id, new CambiarRolRequest(RolUsuario.PASAJERO, companyId), adminId);
 
         verifyNoInteractions(catalogClient);
         assertThat(r.companyId()).isNull();

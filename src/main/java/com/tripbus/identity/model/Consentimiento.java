@@ -39,6 +39,10 @@ public class Consentimiento {
     @Column(name = "otorgado_por")
     private UUID otorgadoPor;
 
+    /** US-131: retiro del consentimiento al eliminar la cuenta; null mientras siga vigente. */
+    @Column(name = "revocado_en")
+    private Instant revocadoEn;
+
     protected Consentimiento() {
     }
 
@@ -75,5 +79,17 @@ public class Consentimiento {
 
     public UUID getOtorgadoPor() {
         return otorgadoPor;
+    }
+
+    public Instant getAceptadoEn() {
+        return aceptadoEn;
+    }
+
+    public Instant getRevocadoEn() {
+        return revocadoEn;
+    }
+
+    public void setRevocadoEn(Instant revocadoEn) {
+        this.revocadoEn = revocadoEn;
     }
 }

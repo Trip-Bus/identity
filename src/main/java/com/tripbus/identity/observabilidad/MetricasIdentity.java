@@ -40,7 +40,7 @@ public class MetricasIdentity {
         contador(LOGINS, "Intentos de inicio de sesión por resultado", resultado).increment();
     }
 
-    public void refresh(String resultado) {
+    public void renovacionSesion(String resultado) {
         contador(REFRESH, "Renovaciones de sesión (refresh token) por resultado", resultado).increment();
     }
 

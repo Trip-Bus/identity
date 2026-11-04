@@ -15,7 +15,7 @@ class MetricasIdentityTest {
         metricas.login(MetricasIdentity.EXITO);
         metricas.login(MetricasIdentity.EXITO);
         metricas.login(MetricasIdentity.CREDENCIALES_INVALIDAS);
-        metricas.refresh("refresh_token_reused");
+        metricas.renovacionSesion("refresh_token_reused");
 
         assertThat(registry.get(MetricasIdentity.LOGINS).tag("resultado", "exito").counter().count()).isEqualTo(2.0);
         assertThat(registry.get(MetricasIdentity.LOGINS).tag("resultado", "credenciales_invalidas").counter().count())

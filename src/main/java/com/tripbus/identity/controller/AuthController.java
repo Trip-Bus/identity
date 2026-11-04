@@ -136,10 +136,10 @@ public class AuthController {
         try {
             response = refreshTokens.refresh(request.refreshToken());
         } catch (RefreshTokenException e) {
-            metricas.refresh(e.getCode().toLowerCase(Locale.ROOT));
+            metricas.renovacionSesion(e.getCode().toLowerCase(Locale.ROOT));
             throw e;
         }
-        metricas.refresh(MetricasIdentity.EXITO);
+        metricas.renovacionSesion(MetricasIdentity.EXITO);
         return ResponseEntity.ok(response);
     }
 

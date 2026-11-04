@@ -39,6 +39,8 @@ public class CifradorSecretos {
 
     private final SecretKeySpec llave;
     private final SecureRandom random = new SecureRandom();
+    /** Para la llave aleatoria de desarrollo (método estático): una sola instancia reutilizada. */
+    private static final SecureRandom RANDOM_LLAVE = new SecureRandom();
 
     @Autowired
     public CifradorSecretos(@Value("${tripbus.identity.mfa.encryption-key:}") String llaveConfigurada) {
@@ -54,7 +56,7 @@ public class CifradorSecretos {
             log.warn("MFA_ENCRYPTION_KEY no está definida: se usa una llave aleatoria y la verificación en dos "
                     + "pasos no sobrevive un reinicio (solo para desarrollo)");
             byte[] aleatoria = new byte[BYTES_LLAVE];
-            new SecureRandom().nextBytes(aleatoria);
+            RANDOM_LLAVE.nextBytes(aleatoria);
             return aleatoria;
         }
         String texto = valor.trim();

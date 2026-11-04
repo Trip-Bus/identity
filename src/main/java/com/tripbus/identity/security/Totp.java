@@ -50,7 +50,9 @@ public final class Totp {
     static String codigo(byte[] secreto, long paso, int digitos) {
         byte[] hash;
         try {
-            Mac mac = Mac.getInstance(HMAC);
+            // HmacSHA1 es el algoritmo de TOTP (RFC 6238/4226) y el único que todas las apps autenticadoras
+            // aceptan. Las colisiones de SHA-1 no afectan a HMAC, así que aquí no es un hash débil.
+            Mac mac = Mac.getInstance(HMAC); // NOSONAR java:S4790 (HMAC-SHA1 de TOTP, no un hash de integridad)
             mac.init(new SecretKeySpec(secreto, HMAC));
             hash = mac.doFinal(ByteBuffer.allocate(Long.BYTES).putLong(paso).array());
         } catch (GeneralSecurityException e) {

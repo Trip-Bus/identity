@@ -31,7 +31,8 @@ public class Usuario {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Column(name = "documento_identidad", nullable = false, unique = true)
+    /** Null solo en una cuenta eliminada y anonimizada (US-131). */
+    @Column(name = "documento_identidad", unique = true)
     private String documentoIdentidad;
 
     @Column(nullable = false)

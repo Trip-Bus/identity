@@ -1,7 +1,9 @@
 package com.tripbus.identity.service;
 
+import com.tripbus.identity.observabilidad.MetricasIdentity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -27,15 +29,23 @@ public class LoginAttemptService {
     private final int maxAttempts;
     private final Duration window;
     private final Duration lockout;
+    private final MetricasIdentity metricas;
 
+    @Autowired
     public LoginAttemptService(StringRedisTemplate redis,
             @Value("${tripbus.identity.login.max-attempts:5}") int maxAttempts,
             @Value("${tripbus.identity.login.window:15m}") Duration window,
-            @Value("${tripbus.identity.login.lockout:15m}") Duration lockout) {
+            @Value("${tripbus.identity.login.lockout:15m}") Duration lockout,
+            MetricasIdentity metricas) {
         this.redis = redis;
         this.maxAttempts = maxAttempts;
         this.window = window;
         this.lockout = lockout;
+        this.metricas = metricas;
+    }
+
+    public LoginAttemptService(StringRedisTemplate redis, int maxAttempts, Duration window, Duration lockout) {
+        this(redis, maxAttempts, window, lockout, null);
     }
 
     public long remainingLockSeconds(String email) {
@@ -64,6 +74,9 @@ public class LoginAttemptService {
             } catch (Exception e) {
                 log.warn("Redis no disponible al establecer el bloqueo de login: {}", e.getMessage());
                 return false;
+            }
+            if (metricas != null) {
+                metricas.cuentaBloqueada();
             }
             try {
                 redis.delete(key);

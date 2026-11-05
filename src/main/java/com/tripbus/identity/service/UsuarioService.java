@@ -15,6 +15,7 @@ import com.tripbus.identity.exception.EmailYaRegistradoException;
 import com.tripbus.identity.exception.NoPuedeSuspenderseException;
 import com.tripbus.identity.exception.RolNoPermitidoException;
 import com.tripbus.identity.exception.UsuarioNoEncontradoException;
+import com.tripbus.identity.model.AccionAuditoria;
 import com.tripbus.identity.model.RolUsuario;
 import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
@@ -56,6 +57,7 @@ public class UsuarioService {
     private final SecureRandom secureRandom = new SecureRandom();
     private final RefreshTokenService refreshTokens;
     private final LoginAttemptService loginAttempts;
+    private final AuditoriaService auditoria;
 
     @Autowired
     public UsuarioService(UsuarioRepository usuarioRepository,
@@ -66,7 +68,8 @@ public class UsuarioService {
                           IdentityEventPublisher events,
                           SuspensionPublisher suspensionPublisher,
                           RefreshTokenService refreshTokens,
-                          LoginAttemptService loginAttempts) {
+                          LoginAttemptService loginAttempts,
+                          AuditoriaService auditoria) {
         this.usuarioRepository = usuarioRepository;
         this.catalogClient = catalogClient;
         this.passwordHasher = passwordHasher;
@@ -76,13 +79,14 @@ public class UsuarioService {
         this.suspensionPublisher = suspensionPublisher;
         this.refreshTokens = refreshTokens;
         this.loginAttempts = loginAttempts;
+        this.auditoria = auditoria;
     }
 
     public UsuarioService(UsuarioRepository usuarioRepository, CatalogClient catalogClient, PasswordHasher passwordHasher,
             PasswordResetService passwordResetService, SesionService sesionService, IdentityEventPublisher events,
             SuspensionPublisher suspensionPublisher) {
         this(usuarioRepository, catalogClient, passwordHasher, passwordResetService, sesionService, events,
-                suspensionPublisher, null, null);
+                suspensionPublisher, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -110,9 +114,11 @@ public class UsuarioService {
                 resultado.getNumber(), resultado.getSize(), resultado.getTotalElements(), resultado.getTotalPages());
     }
 
+    /** US-105: queda en la auditoría con el rol y la empresa de antes y de después. */
     @Transactional
-    public UsuarioResponse cambiarRol(UUID id, CambiarRolRequest request) {
+    public UsuarioResponse cambiarRol(UUID id, CambiarRolRequest request, UUID adminId) {
         Usuario usuario = usuarioRepository.findById(id).orElseThrow(UsuarioNoEncontradoException::new);
+        Map<String, Object> antes = AuditoriaService.estado(usuario);
 
         RolUsuario nuevoRol = request.rol();
         boolean requiereCompanyId = esRolDeEmpresa(nuevoRol);
@@ -125,6 +131,7 @@ public class UsuarioService {
         usuario.setCompanyId(requiereCompanyId ? request.companyId() : null);
         usuario = usuarioRepository.save(usuario);
 
+        auditar(adminId, AccionAuditoria.CAMBIAR_ROL, id, antes, AuditoriaService.estado(usuario), null);
         return toResponse(usuario);
     }
 
@@ -165,6 +172,7 @@ public class UsuarioService {
         payload.put("role", usuario.getRol());
         payload.put("timestamp", Instant.now());
         events.publish(IdentityEventPublisher.USER_REGISTERED, payload);
+        auditar(adminId, AccionAuditoria.CREAR_USUARIO, usuario.getId(), null, AuditoriaService.estado(usuario), null);
 
         log.info("Usuario {} ({}) creado por el administrador {}", usuario.getId(), usuario.getRol(), adminId);
         return toResponse(usuario);
@@ -187,6 +195,9 @@ public class UsuarioService {
             usuario.setActivo(activo);
             usuario = usuarioRepository.save(usuario);
             if (!activo && refreshTokens != null) refreshTokens.revokeAll(id);
+            // US-105: solo se audita un cambio real de estado (repetir la orden no cambia nada).
+            auditar(adminId, activo ? AccionAuditoria.REACTIVAR : AccionAuditoria.SUSPENDER, id,
+                    Map.of("activo", !activo), Map.of("activo", activo), request.motivo());
         }
 
         if (activo) {
@@ -199,9 +210,17 @@ public class UsuarioService {
     }
 
     @Transactional
-    public void desbloquear(UUID id) {
+    public void desbloquear(UUID id, UUID adminId) {
         Usuario usuario = usuarioRepository.findById(id).orElseThrow(UsuarioNoEncontradoException::new);
         if (loginAttempts != null) loginAttempts.clear(usuario.getEmail());
+        auditar(adminId, AccionAuditoria.DESBLOQUEAR, id, null, null, null);
+    }
+
+    private void auditar(UUID adminId, AccionAuditoria accion, UUID target, Map<String, Object> antes,
+                         Map<String, Object> despues, String motivo) {
+        if (auditoria != null) {
+            auditoria.registrar(adminId, accion, target, antes, despues, motivo);
+        }
     }
 
     private void validarEmpresa(UUID companyId) {

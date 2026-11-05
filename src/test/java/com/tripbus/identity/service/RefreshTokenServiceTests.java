@@ -82,4 +82,11 @@ class RefreshTokenServiceTests {
         service.revokeForLogout(userId,Instant.now(),plain); verify(repository).revokeFamily(eq(row.getFamilyId()),any(Instant.class));
         service.purgeExpired(); verify(repository).deleteExpiredBefore(any(Instant.class));
     }
+    /** US-131: las sesiones abiertas son los tokens vigentes sin usar ni revocar. */
+    @Test void activeSessionsAreTheCurrentTokenOfEachFamily() {
+        RefreshToken vigente=new RefreshToken(userId,"h",UUID.randomUUID(),Instant.now(),Instant.now().plusSeconds(60));
+        when(repository.findByUserIdAndUsedAtIsNullAndRevokedAtIsNullAndExpiresAtAfter(eq(userId),any(Instant.class)))
+                .thenReturn(java.util.List.of(vigente));
+        assertThat(service.sesionesActivas(userId)).containsExactly(vigente);
+    }
 }

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Cierre de sesión (US-096) y evidencia del consentimiento de datos (US-001). */
@@ -86,6 +87,18 @@ public class SesionService {
     public void registrarConsentimientoPorAdmin(UUID usuarioId, UUID adminId) {
         consentimientoRepository.save(new Consentimiento(usuarioId, POLITICA_DATOS, VERSION_POLITICA, Instant.now(),
                 Consentimiento.ORIGEN_ADMIN, adminId));
+    }
+
+    /** US-131: la evidencia de los consentimientos del usuario (vigentes y retirados). */
+    @Transactional(readOnly = true)
+    public List<Consentimiento> consentimientos(UUID usuarioId) {
+        return consentimientoRepository.findByUsuarioId(usuarioId);
+    }
+
+    /** US-131: retiro del consentimiento al eliminar la cuenta; la aceptación se conserva como evidencia. */
+    @Transactional
+    public int revocarConsentimientos(UUID usuarioId) {
+        return consentimientoRepository.revocarVigentes(usuarioId, Instant.now());
     }
 
     /** Las revocaciones de tokens ya expirados no sirven: se purgan cada hora. */

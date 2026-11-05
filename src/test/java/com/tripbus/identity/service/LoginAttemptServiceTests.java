@@ -1,5 +1,7 @@
 package com.tripbus.identity.service;
 
+import com.tripbus.identity.observabilidad.MetricasIdentity;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -55,5 +57,17 @@ class LoginAttemptServiceTests {
         when(redis.execute(any(RedisScript.class), anyList(), any())).thenReturn(5L);
         doThrow(new IllegalStateException("offline")).when(values).set(anyString(),eq("1"),any(Duration.class));
         assertThat(service.failed("ana@example.com")).isFalse();
+    }
+    /** HT-10: tripbus_cuentas_bloqueadas_total sube solo cuando el bloqueo quedó guardado. */
+    @Test void blockedAccountsAreCountedOnlyWhenTheLockIsStored() {
+        SimpleMeterRegistry registry=new SimpleMeterRegistry();
+        LoginAttemptService conMetricas=new LoginAttemptService(redis,5,Duration.ofMinutes(15),Duration.ofMinutes(15),
+                new MetricasIdentity(registry));
+        when(redis.execute(any(RedisScript.class), anyList(), any())).thenReturn(4L,5L,5L);
+        assertThat(conMetricas.failed("ana@example.com")).isFalse();
+        assertThat(conMetricas.failed("ana@example.com")).isTrue();
+        doThrow(new IllegalStateException("offline")).when(values).set(anyString(),eq("1"),any(Duration.class));
+        assertThat(conMetricas.failed("ana@example.com")).isFalse();
+        assertThat(registry.get(MetricasIdentity.CUENTAS_BLOQUEADAS).counter().count()).isEqualTo(1.0);
     }
 }

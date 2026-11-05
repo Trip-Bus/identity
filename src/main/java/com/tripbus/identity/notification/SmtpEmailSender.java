@@ -1,5 +1,6 @@
 package com.tripbus.identity.notification;
 
+import com.tripbus.identity.util.Enmascarar;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
@@ -59,7 +60,7 @@ public class SmtpEmailSender implements EmailSender {
         try {
             executor.execute(() -> enviarAhora(tipo, email, correo));
         } catch (RejectedExecutionException e) {
-            log.warn("No se pudo programar el correo de {} para {}: {}", tipo, email, e.getMessage());
+            log.warn("No se pudo programar el correo de {} para {}: {}", tipo, Enmascarar.email(email), e.getMessage());
         }
     }
 
@@ -72,9 +73,9 @@ public class SmtpEmailSender implements EmailSender {
             helper.setSubject(correo.asunto());
             helper.setText(correo.texto(), correo.html());
             mailSender.send(mensaje);
-            log.info("Correo de {} enviado a {}", tipo, email);
+            log.info("Correo de {} enviado a {}", tipo, Enmascarar.email(email));
         } catch (MailException | MessagingException e) {
-            log.warn("No se pudo enviar el correo de {} a {}: {}", tipo, email, e.getMessage());
+            log.warn("No se pudo enviar el correo de {} a {}: {}", tipo, Enmascarar.email(email), e.getMessage());
         }
     }
 }

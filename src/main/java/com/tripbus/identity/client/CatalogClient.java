@@ -4,9 +4,11 @@ import com.tripbus.identity.config.RequestIdFilter;
 import com.tripbus.identity.exception.CatalogNoDisponibleException;
 import com.tripbus.identity.exception.EmpresaInactivaException;
 import com.tripbus.identity.exception.EmpresaNoEncontradaException;
+import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -22,6 +24,9 @@ import java.util.UUID;
  * US-101: valida en catalog ({@code GET /internal/companies/{id}}, header X-Internal-Token) que la
  * empresa de un OPERADOR/CONDUCTOR exista y esté ACTIVA. Sin respuesta de catalog no se asigna el
  * rol: timeouts cortos (300 ms conexión / 800 ms lectura) y 503 CATALOG_UNAVAILABLE.
+ *
+ * <p>HT-10: el RestClient registra la observación "http.client.requests", así cada llamada es un span
+ * hijo de la petición y viaja con el header {@code traceparent} (W3C) además del X-Request-Id.
  */
 @Component
 public class CatalogClient {
@@ -41,7 +46,13 @@ public class CatalogClient {
 
     @Autowired
     public CatalogClient(@Value("${tripbus.services.catalog-url}") String catalogUrl,
-                         @Value("${tripbus.internal-token}") String internalToken) {
+                         @Value("${tripbus.internal-token}") String internalToken,
+                         ObjectProvider<ObservationRegistry> observationRegistry) {
+        this(builder(catalogUrl, internalToken)
+                .observationRegistry(observationRegistry.getIfAvailable(() -> ObservationRegistry.NOOP)));
+    }
+
+    CatalogClient(String catalogUrl, String internalToken) {
         this(builder(catalogUrl, internalToken));
     }
 

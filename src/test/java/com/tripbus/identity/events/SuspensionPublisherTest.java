@@ -95,4 +95,26 @@ class SuspensionPublisherTest {
 
         verifyNoInteractions(redis, events);
     }
+
+    /** US-131: eliminar la cuenta deja la misma clave que una suspensión y publica UserDeleted {userId}. */
+    @Test
+    void eliminarGuardaLaClaveYPublicaUserDeleted() {
+        new SuspensionPublisher(redis, events, true).publicarEliminacion(userId);
+
+        verify(valores).set("tripbus:suspended:" + userId, "1");
+        verify(events).publish(IdentityEventPublisher.USER_DELETED, Map.of("userId", userId));
+    }
+
+    @Test
+    void siRedisFallaAlEliminarElEventoSePublicaIgualYApagadoNoHaceNada() {
+        doThrow(new RedisConnectionFailureException("caído")).when(valores).set(anyString(), anyString());
+
+        new SuspensionPublisher(redis, events, true).publicarEliminacion(userId);
+        verify(events).publish(eq(IdentityEventPublisher.USER_DELETED), any());
+
+        StringRedisTemplate otroRedis = mock(StringRedisTemplate.class);
+        IdentityEventPublisher otrosEventos = mock(IdentityEventPublisher.class);
+        new SuspensionPublisher(otroRedis, otrosEventos, false).publicarEliminacion(UUID.randomUUID());
+        verifyNoInteractions(otroRedis, otrosEventos);
+    }
 }

@@ -38,8 +38,8 @@ public class MailConfig {
     public EmailSender emailSender(MailProperties properties, PlantillasCorreo plantillas,
                                    @Qualifier("applicationTaskExecutor") Executor executor) {
         if (!properties.enabled()) {
-            log.warn("MAIL_HOST no está definido: los correos no se envían, solo quedan en el log");
-            return new LoggingEmailSender(plantillas);
+            log.warn("MAIL_HOST no está definido: los correos no se envían (el log solo deja constancia, sin enlaces)");
+            return new LoggingEmailSender();
         }
         log.info("Correos por SMTP en {}:{}", properties.host(), properties.port());
         return new SmtpEmailSender(javaMailSender(properties), properties.from(), plantillas, executor);

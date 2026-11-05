@@ -221,7 +221,12 @@ jobs:
           context: .
           load: true
           push: false
-          build-args: GIT_COMMIT=${{ github.sha }}
+          # pull + APK_CACHE_BUST: base y paquetes de Alpine al día aunque haya caché (si no, Trivy falla
+          # por parches publicados después de la capa guardada).
+          pull: true
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            APK_CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           tags: identity:ci
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -254,7 +259,9 @@ jobs:
         with:
           context: .
           push: true
-          build-args: GIT_COMMIT=${{ github.sha }}
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            APK_CACHE_BUST=${{ github.run_id }}-${{ github.run_attempt }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

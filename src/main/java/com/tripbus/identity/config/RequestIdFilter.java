@@ -21,10 +21,16 @@ import java.util.regex.Pattern;
  * esa petición) y en la respuesta. Si el API Gateway ya mandó X-Request-Id se reutiliza, así la
  * misma petición se puede seguir entre servicios. Corre antes que Spring Security para que hasta
  * un 401 quede correlacionado, y al terminar escribe una línea de acceso (método, ruta, estado, ms).
+ *
+ * <p>HT-10: va justo después de {@code ServerHttpObservationFilter} (HIGHEST_PRECEDENCE + 1), que abre
+ * el span de la petición: así también la línea de acceso lleva traceId y spanId en el MDC.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(RequestIdFilter.ORDEN)
 public class RequestIdFilter extends OncePerRequestFilter {
+
+    /** Después del filtro de observaciones de Spring Boot y antes de Spring Security (-100). */
+    public static final int ORDEN = Ordered.HIGHEST_PRECEDENCE + 2;
 
     private static final Logger log = LoggerFactory.getLogger(RequestIdFilter.class);
 

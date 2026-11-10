@@ -8,13 +8,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -45,12 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "tripbus.events.enabled=false")
 @ActiveProfiles("local")
-@Testcontainers
-class IdentityPostgresIT {
-
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+class IdentityPostgresIT extends IntegrationContainers {
 
     @Autowired
     private TestRestTemplate rest;
@@ -75,6 +66,24 @@ class IdentityPostgresIT {
         assertThat(login.getBody().get("accessToken").asText()).isNotBlank();
 
         assertThat(consentimientoRepository.findByUsuarioId(userId)).hasSize(1);
+    }
+
+    @Test
+    void refreshRotaElTokenYLaReutilizacionInvalidaLaFamiliaContraPostgresReal() {
+        String email="refresh."+UUID.randomUUID()+"@tripbus.co";
+        ResponseEntity<JsonNode> registro=registrar(email,"CC-REFRESH-"+UUID.randomUUID());
+        String inicial=registro.getBody().get("refreshToken").asText();
+        assertThat(registro.getBody().get("refreshExpiresAt").asText()).isNotBlank();
+        ResponseEntity<JsonNode> renovacion=rest.postForEntity("/auth/refresh",Map.of("refreshToken",inicial),JsonNode.class);
+        assertThat(renovacion.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String rotado=renovacion.getBody().get("refreshToken").asText();
+        assertThat(rotado).isNotEqualTo(inicial);
+        ResponseEntity<JsonNode> reuse=rest.postForEntity("/auth/refresh",Map.of("refreshToken",inicial),JsonNode.class);
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(reuse.getBody().at("/error/code").asText()).isEqualTo("REFRESH_TOKEN_REUSED");
+        ResponseEntity<JsonNode> familiaRevocada=rest.postForEntity("/auth/refresh",Map.of("refreshToken",rotado),JsonNode.class);
+        assertThat(familiaRevocada.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(familiaRevocada.getBody().at("/error/code").asText()).isEqualTo("INVALID_REFRESH_TOKEN");
     }
 
     private ResponseEntity<JsonNode> registrar(String email, String documento) {
@@ -203,9 +212,75 @@ class IdentityPostgresIT {
         }
     }
 
+    /** V6 rellena la columna de búsqueda de los usuarios existentes sin tildes ni mayúsculas. */
+    @Test
+    void migracionV6RellenaLaBusquedaDeLosUsuariosExistentes() throws Exception {
+        String esquema = "v6_busqueda";
+        flywayEnEsquema(esquema, "5").migrate();
+        try (Connection c = conexion(); PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad, nombre,"
+                        + " fecha_creacion, fecha_actualizacion) VALUES (?, 'jose@mail.com', 'hash', 'CC-V6',"
+                        + " 'José ÑUÑEZ Álvarez', now(), now())")) {
+            ps.setObject(1, UUID.randomUUID());
+            ps.executeUpdate();
+        }
+
+        flywayEnEsquema(esquema, "6").migrate();
+
+        try (Connection c = conexion(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT busqueda FROM " + esquema + ".usuarios")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("jose nunez alvarez jose@mail.com cc-v6");
+        }
+    }
+
+    /** US-130: V8 deja verificados a los usuarios que ya existían (QA y demo) y los nuevos quedan sin verificar. */
+    @Test
+    void migracionV8DejaVerificadosALosUsuariosExistentes() throws Exception {
+        String esquema = "v8_verificados";
+        flywayEnEsquema(esquema, "5").migrate();
+        insertarUsuario(esquema, "existente@mail.com", "CC-V8-1");
+
+        flywayEnEsquema(esquema, "8").migrate();
+        try (Connection c = conexion(); Statement s = c.createStatement()) {
+            s.executeUpdate("INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad,"
+                    + " nombre, fecha_creacion, fecha_actualizacion, busqueda) VALUES ('" + UUID.randomUUID()
+                    + "', 'nuevo@mail.com', 'hash', 'CC-V8-2', 'V8', now(), now(), 'v8')");
+        }
+
+        try (Connection c = conexion(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT email, email_verificado, email_verificado_en FROM " + esquema
+                     + ".usuarios ORDER BY email")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("existente@mail.com");
+            assertThat(rs.getBoolean(2)).isTrue();
+            assertThat(rs.getTimestamp(3)).isNotNull();
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isEqualTo("nuevo@mail.com");
+            assertThat(rs.getBoolean(2)).isFalse();
+            assertThat(rs.getTimestamp(3)).isNull();
+        }
+    }
+
+    /** US-128: la BD también rechaza un teléfono que no sea un celular colombiano. */
+    @Test
+    void migracionV7SoloAceptaCelularesColombianos() throws Exception {
+        String esquema = "v7_telefono";
+        flywayEnEsquema(esquema, "5").migrate();
+        insertarUsuario(esquema, "tel@mail.com", "CC-V7-1");
+        flywayEnEsquema(esquema, "7").migrate();
+
+        try (Connection c = conexion(); Statement s = c.createStatement()) {
+            assertThat(s.executeUpdate("UPDATE " + esquema + ".usuarios SET telefono = '3001234567'")).isEqualTo(1);
+            assertThatThrownBy(() -> s.executeUpdate("UPDATE " + esquema + ".usuarios SET telefono = '6011234567'"))
+                    .isInstanceOf(SQLException.class)
+                    .hasMessageContaining("ck_usuarios_telefono");
+        }
+    }
+
     private static Flyway flywayEnEsquema(String esquema, String version) {
         return Flyway.configure()
-                .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .schemas(esquema)
                 .locations("classpath:db/migration")
                 .target(version)
@@ -213,7 +288,7 @@ class IdentityPostgresIT {
     }
 
     private static Connection conexion() throws SQLException {
-        return DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 
     private static void insertarUsuario(String esquema, String email, String documento) throws SQLException {

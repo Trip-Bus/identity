@@ -2,23 +2,29 @@ package com.tripbus.identity.service;
 
 import com.tripbus.identity.dto.AuthResponse;
 import com.tripbus.identity.dto.LoginRequest;
+import com.tripbus.identity.dto.MfaLoginRequest;
 import com.tripbus.identity.dto.RegistroRequest;
+import com.tripbus.identity.dto.ResultadoLogin;
 import com.tripbus.identity.exception.CredencialesInvalidasException;
 import com.tripbus.identity.exception.CuentaSuspendidaException;
+import com.tripbus.identity.exception.CuentaBloqueadaException;
 import com.tripbus.identity.exception.DocumentoYaRegistradoException;
 import com.tripbus.identity.exception.EmailYaRegistradoException;
+import com.tripbus.identity.exception.MfaException;
+import com.tripbus.identity.exception.UsuarioNoEncontradoException;
 import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.JwtSigner;
 import com.tripbus.identity.security.PasswordHasher;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.concurrent.CompletableFuture;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -26,11 +32,31 @@ public class AuthService {
     private final UsuarioRepository usuarioRepository;
     private final PasswordHasher passwordHasher;
     private final JwtSigner jwtSigner;
+    private final VerificacionEmailService verificacionEmailService;
+    private final LoginAttemptService loginAttempts;
+    private final RefreshTokenService refreshTokens;
+    private final PasswordResetService passwordResetService;
+    private final MfaService mfa;
 
-    public AuthService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, JwtSigner jwtSigner) {
+    @Autowired
+    public AuthService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, JwtSigner jwtSigner,
+                       VerificacionEmailService verificacionEmailService, LoginAttemptService loginAttempts,
+                       RefreshTokenService refreshTokens, PasswordResetService passwordResetService,
+                       MfaService mfa) {
         this.usuarioRepository = usuarioRepository;
         this.passwordHasher = passwordHasher;
         this.jwtSigner = jwtSigner;
+        this.verificacionEmailService = verificacionEmailService;
+        this.loginAttempts = loginAttempts;
+        this.refreshTokens = refreshTokens;
+        this.passwordResetService = passwordResetService;
+        this.mfa = mfa;
+    }
+
+    /** Compatibilidad con pruebas unitarias del flujo previo. */
+    AuthService(UsuarioRepository usuarioRepository, PasswordHasher passwordHasher, JwtSigner jwtSigner,
+                VerificacionEmailService verificacionEmailService) {
+        this(usuarioRepository, passwordHasher, jwtSigner, verificacionEmailService, null, null, null, null);
     }
 
     @Transactional
@@ -57,42 +83,67 @@ public class AuthService {
             // Registro concurrente: otra petición con el mismo email/documento pasó la verificación
             // de arriba al mismo tiempo y el índice único de la BD rechazó esta. Se responde 409 con
             // el mismo código que el duplicado normal en vez de un 500.
-            throw traducirConflicto(ex);
+            throw ConflictosUnicidad.traducir(ex);
         }
 
+        // US-130: el correo de verificación no bloquea el registro ni el login.
+        verificacionEmailService.enviarVerificacion(usuario);
         return emitirRespuesta(usuario);
     }
 
-    private static RuntimeException traducirConflicto(DataIntegrityViolationException ex) {
-        String restriccion = nombreRestriccion(ex);
-        if (restriccion.contains("email")) {
-            return new EmailYaRegistradoException();
-        }
-        if (restriccion.contains("documento")) {
-            return new DocumentoYaRegistradoException();
-        }
-        return ex;
-    }
-
-    /** Nombre del índice/constraint que falló (uq_usuarios_email_lower, uq_usuarios_documento_identidad). */
-    private static String nombreRestriccion(DataIntegrityViolationException ex) {
-        for (Throwable causa = ex; causa != null; causa = causa.getCause()) {
-            if (causa instanceof ConstraintViolationException cve && cve.getConstraintName() != null) {
-                return cve.getConstraintName().toLowerCase(Locale.ROOT);
-            }
-        }
-        String mensaje = ex.getMostSpecificCause().getMessage();
-        return mensaje != null ? mensaje.toLowerCase(Locale.ROOT) : "";
-    }
-
+    /** Login sin 2FA (pruebas y flujos que no la admiten): con la 2FA activa falla, usa {@link #iniciarSesion}. */
     public AuthResponse login(LoginRequest request) {
+        ResultadoLogin resultado = iniciarSesion(request);
+        if (resultado.tokens() == null) {
+            throw new IllegalStateException("La cuenta tiene verificación en dos pasos: use iniciarSesion");
+        }
+        return resultado.tokens();
+    }
+
+    /**
+     * Valida correo y contraseña. Sin 2FA entrega los tokens; con la 2FA activa (US-106) no entrega tokens
+     * sino el mfaToken del segundo paso ({@link #completarSegundoPaso}).
+     */
+    public ResultadoLogin iniciarSesion(LoginRequest request) {
+        Usuario usuario = verificarCredenciales(request);
+        if (mfa != null && mfa.activa(usuario.getId())) {
+            return ResultadoLogin.conSegundoPaso(mfa.emitirDesafio(usuario.getId()));
+        }
+        return ResultadoLogin.conTokens(emitirRespuesta(usuario));
+    }
+
+    /** US-106: canjea el mfaToken con un código de la app o de recuperación y entrega los tokens. */
+    @Transactional(noRollbackFor = MfaException.class)
+    public AuthResponse completarSegundoPaso(MfaLoginRequest request) {
+        if (mfa == null) {
+            throw MfaException.desafioInvalido();
+        }
+        UUID usuarioId = mfa.verificarDesafio(request.mfaToken(), request.code(), request.recoveryCode());
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElseThrow(UsuarioNoEncontradoException::new);
+        if (!usuario.isActivo()) {
+            throw new CuentaSuspendidaException();
+        }
+        return emitirRespuesta(usuario);
+    }
+
+    private Usuario verificarCredenciales(LoginRequest request) {
         // Decisión de seguridad: usuario inexistente y contraseña incorrecta lanzan la
         // MISMA excepción con el MISMO mensaje, para no permitir que alguien deduzca,
         // por la respuesta, si un correo está registrado en el sistema.
-        Usuario usuario = usuarioRepository.findByEmail(request.email())
-                .orElseThrow(CredencialesInvalidasException::new);
+        if (loginAttempts != null) {
+            long retry = loginAttempts.remainingLockSeconds(request.email());
+            if (retry > 0) throw new CuentaBloqueadaException(retry);
+        }
+        Usuario usuario = usuarioRepository.findByEmail(request.email()).orElse(null);
+        if (usuario == null) {
+            // Argon2 mantiene un costo similar al camino de una contraseña incorrecta.
+            passwordHasher.hash(request.password());
+            fallarLogin(request.email(), null);
+            throw new CredencialesInvalidasException();
+        }
 
         if (!passwordHasher.matches(request.password(), usuario.getPasswordHash())) {
+            fallarLogin(request.email(), usuario);
             throw new CredencialesInvalidasException();
         }
 
@@ -100,13 +151,28 @@ public class AuthService {
             throw new CuentaSuspendidaException();
         }
 
-        return emitirRespuesta(usuario);
+        if (loginAttempts != null) loginAttempts.succeeded(request.email());
+        return usuario;
     }
 
-    private AuthResponse emitirRespuesta(Usuario usuario) {
+    private void fallarLogin(String email, Usuario usuario) {
+        if (loginAttempts != null && loginAttempts.failed(email) && usuario != null && passwordResetService != null) {
+            CompletableFuture.runAsync(() -> passwordResetService.enviarAvisoBloqueo(usuario));
+        }
+        if (loginAttempts != null && loginAttempts.remainingLockSeconds(email) > 0) {
+            throw new CuentaBloqueadaException(loginAttempts.remainingLockSeconds(email));
+        }
+    }
+
+    /** También lo usa CuentaService: tras cambiar la contraseña la sesión actual sigue con un token nuevo. */
+    AuthResponse emitirRespuesta(Usuario usuario) {
         Duration ttl = jwtSigner.getDefaultTtl();
         Instant expiresAt = Instant.now().plus(ttl);
-        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(), usuario.getEmail(), ttl);
-        return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol());
+        RefreshTokenService.Issued refresh = refreshTokens == null ? null : refreshTokens.issue(usuario.getId());
+        String accessToken = jwtSigner.sign(usuario.getId(), usuario.getRol(), usuario.getCompanyId(),
+                usuario.getEmail(), usuario.isEmailVerificado(), ttl);
+        if (refresh == null) return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol());
+        return new AuthResponse(accessToken, expiresAt, usuario.getId(), usuario.getRol(),
+                refresh.token(), refresh.expiresAt());
     }
 }

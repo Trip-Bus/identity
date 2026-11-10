@@ -5,6 +5,7 @@ import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.repository.UsuarioRepository;
 import com.tripbus.identity.security.PasswordHasher;
 import com.tripbus.identity.service.SesionService;
+import com.tripbus.identity.util.Enmascarar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -63,11 +65,14 @@ public class DemoUsersInitializer implements ApplicationRunner {
             Usuario usuario = new Usuario(email, passwordHasher.hash(password), documento, nombre);
             usuario.setRol(rol);
             usuario.setCompanyId(companyId);
+            // US-130: los usuarios demo quedan con el correo verificado (no reciben correos reales).
+            usuario.setEmailVerificado(true);
+            usuario.setEmailVerificadoEn(Instant.now());
             usuario = usuarioRepository.save(usuario);
             sesionService.registrarConsentimiento(usuario.getId());
-            log.info("Usuario de demostración creado: {} ({})", email, rol);
+            log.info("Usuario de demostración creado: {} ({})", Enmascarar.email(email), rol);
         } catch (DataIntegrityViolationException e) {
-            log.debug("El usuario de demostración {} ya existía", email);
+            log.debug("El usuario de demostración {} ya existía", Enmascarar.email(email));
         }
     }
 }

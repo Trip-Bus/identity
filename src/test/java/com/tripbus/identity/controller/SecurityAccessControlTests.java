@@ -1,6 +1,7 @@
 package com.tripbus.identity.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tripbus.identity.client.CatalogClient;
 import com.tripbus.identity.dto.CambiarRolRequest;
 import com.tripbus.identity.dto.LoginRequest;
 import com.tripbus.identity.dto.RegistroRequest;
@@ -17,6 +18,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
@@ -46,6 +48,10 @@ class SecurityAccessControlTests {
     @Autowired
     private JwtSigner jwtSigner;
 
+    // US-101: asignar OPERADOR/CONDUCTOR consulta la empresa en catalog; aquí siempre es válida.
+    @MockitoBean
+    private CatalogClient catalogClient;
+
     private UUID usuarioObjetivoId;
 
     @BeforeEach
@@ -73,7 +79,7 @@ class SecurityAccessControlTests {
                 "Usuario " + rol.name());
         usuario.setRol(rol);
         usuario = usuarioRepository.save(usuario);
-        return jwtSigner.sign(usuario.getId(), rol, null, usuario.getEmail(), Duration.ofMinutes(5));
+        return jwtSigner.sign(usuario.getId(), rol, null, usuario.getEmail(), false, Duration.ofMinutes(5));
     }
 
     @Test
@@ -85,7 +91,7 @@ class SecurityAccessControlTests {
 
     @Test
     void requestConTokenExpiradoDevuelve401ConUnauthenticated() throws Exception {
-        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, null, Duration.ofMinutes(-5));
+        String tokenExpirado = jwtSigner.sign(UUID.randomUUID(), RolUsuario.ADMIN, null, null, false, Duration.ofMinutes(-5));
 
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
                         .header("Authorization", "Bearer " + tokenExpirado))
@@ -136,7 +142,7 @@ class SecurityAccessControlTests {
 
     @Test
     void obtenerElPropioUsuarioDevuelve200() throws Exception {
-        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, null, Duration.ofMinutes(5));
+        String tokenPropio = jwtSigner.sign(usuarioObjetivoId, RolUsuario.PASAJERO, null, null, false, Duration.ofMinutes(5));
 
         mockMvc.perform(get("/users/" + usuarioObjetivoId)
                         .header("Authorization", "Bearer " + tokenPropio))

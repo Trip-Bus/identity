@@ -1,11 +1,14 @@
 package com.tripbus.identity.exception;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import com.tripbus.identity.exception.RefreshTokenException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -42,6 +45,19 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("INVALID_CREDENTIALS", ex.getMessage()));
     }
 
+    @ExceptionHandler(CuentaBloqueadaException.class)
+    public ResponseEntity<ErrorResponse> handleCuentaBloqueada(CuentaBloqueadaException ex) {
+        return ResponseEntity.status(423).header(HttpHeaders.RETRY_AFTER,
+                        String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ErrorResponse.of("ACCOUNT_LOCKED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RefreshTokenException.class)
+    public ResponseEntity<ErrorResponse> handleRefreshToken(RefreshTokenException ex) {
+        HttpStatus status = "ACCOUNT_SUSPENDED".equals(ex.getCode()) ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED;
+        return ResponseEntity.status(status).body(ErrorResponse.of(ex.getCode(), ex.getMessage()));
+    }
+
     @ExceptionHandler(CuentaSuspendidaException.class)
     public ResponseEntity<ErrorResponse> handleCuentaSuspendida(CuentaSuspendidaException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -58,6 +74,69 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleCompanyIdRequerido(CompanyIdRequeridoException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("COMPANY_ID_REQUIRED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(EmpresaNoEncontradaException.class)
+    public ResponseEntity<ErrorResponse> handleEmpresaNoEncontrada(EmpresaNoEncontradaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("COMPANY_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(EmpresaInactivaException.class)
+    public ResponseEntity<ErrorResponse> handleEmpresaInactiva(EmpresaInactivaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("COMPANY_INACTIVE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(CatalogNoDisponibleException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogNoDisponible(CatalogNoDisponibleException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("CATALOG_UNAVAILABLE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(NoPuedeSuspenderseException.class)
+    public ResponseEntity<ErrorResponse> handleNoPuedeSuspenderse(NoPuedeSuspenderseException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("CANNOT_SUSPEND_SELF", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RolNoPermitidoException.class)
+    public ResponseEntity<ErrorResponse> handleRolNoPermitido(RolNoPermitidoException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("VALIDATION_ERROR", "Uno o más campos no son válidos",
+                        Map.of("rol", ex.getMessage())));
+    }
+
+    /** Parámetro con un valor que no se puede convertir (p. ej. ?rol=CHOFER o ?companyId=abc). */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("VALIDATION_ERROR", "Uno o más campos no son válidos",
+                        Map.of(ex.getName(), "Valor no válido")));
+    }
+
+    @ExceptionHandler(ContrasenaActualIncorrectaException.class)
+    public ResponseEntity<ErrorResponse> handleContrasenaActualIncorrecta(ContrasenaActualIncorrectaException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_CURRENT_PASSWORD", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DemasiadasSolicitudesException.class)
+    public ResponseEntity<ErrorResponse> handleDemasiadasSolicitudes(DemasiadasSolicitudesException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ErrorResponse.of("TOO_MANY_REQUESTS", ex.getMessage()));
+    }
+
+    /** US-131: el único ADMIN activo no puede eliminar su cuenta. */
+    @ExceptionHandler(UltimoAdminException.class)
+    public ResponseEntity<ErrorResponse> handleUltimoAdmin(UltimoAdminException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.of("LAST_ADMIN", ex.getMessage()));
+    }
+
+    /** US-106: cada error de la verificación en dos pasos trae su status y código. */
+    @ExceptionHandler(MfaException.class)
+    public ResponseEntity<ErrorResponse> handleMfa(MfaException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(ErrorResponse.of(ex.getCode(), ex.getMessage()));
     }
 
     @ExceptionHandler(TokenInvalidoOExpiradoException.class)

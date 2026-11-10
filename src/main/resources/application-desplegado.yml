@@ -10,4 +10,10 @@ spring:
       password: ${REDIS_PASSWORD}
 
 tripbus:
-  required-env: DB_PASSWORD,REDIS_PASSWORD,JWT_PRIVATE_KEY_PATH,JWT_PUBLIC_KEY_PATH
+  internal-token: ${INTERNAL_API_TOKEN}
+  services:
+    catalog-url: ${CATALOG_URL}
+  identity:
+    mfa:
+      encryption-key: ${MFA_ENCRYPTION_KEY}
+  required-env: DB_PASSWORD,REDIS_PASSWORD,JWT_PRIVATE_KEY_PATH,JWT_PUBLIC_KEY_PATH,CATALOG_URL,INTERNAL_API_TOKEN,MFA_ENCRYPTION_KEY

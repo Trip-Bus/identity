@@ -9,5 +9,11 @@ public record AuthResponse(
         String accessToken,
         Instant expiresAt,
         UUID userId,
-        RolUsuario rol) {
+        RolUsuario rol,
+        String refreshToken,
+        Instant refreshExpiresAt) {
+
+    public AuthResponse(String accessToken, Instant expiresAt, UUID userId, RolUsuario rol) {
+        this(accessToken, expiresAt, userId, rol, null, null);
+    }
 }

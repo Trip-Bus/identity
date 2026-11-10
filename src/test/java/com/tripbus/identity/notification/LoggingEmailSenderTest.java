@@ -11,18 +11,20 @@ import org.slf4j.LoggerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** El token de recuperación de contraseña nunca debe quedar en logs INFO (PROD). */
+/** Sin SMTP: ni el token ni el correo completo quedan en el log, en ningún nivel (HT-10). */
 class LoggingEmailSenderTest {
 
     private static final String TOKEN = "token-secreto-123";
 
     private final Logger logger = (Logger) LoggerFactory.getLogger(LoggingEmailSender.class);
     private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    private final LoggingEmailSender sender = new LoggingEmailSender();
     private Level nivelOriginal;
 
     @BeforeEach
     void capturarLogs() {
         nivelOriginal = logger.getLevel();
+        logger.setLevel(Level.DEBUG);
         appender.start();
         logger.addAppender(appender);
     }
@@ -34,31 +36,21 @@ class LoggingEmailSenderTest {
     }
 
     @Test
-    void enInfoSoloDiceElCorreoSinToken() {
-        logger.setLevel(Level.INFO);
+    void ningunCorreoDejaElTokenNiElCorreoCompletoAunqueElLogEsteEnDebug() {
+        sender.enviarCorreoRecuperacion("ana@tripbus.co", "Ana", TOKEN);
+        sender.enviarAvisoBloqueoCuenta("ana@tripbus.co", "Ana", TOKEN);
+        sender.enviarCorreoVerificacion("ana@tripbus.co", "Ana", TOKEN);
+        sender.enviarAvisoCambioContrasena("ana@tripbus.co", "Ana");
 
-        new LoggingEmailSender().enviarCorreoRecuperacion("ana@tripbus.co", TOKEN);
-
-        assertThat(appender.list).hasSize(1);
-        assertThat(appender.list.get(0).getLevel()).isEqualTo(Level.INFO);
-        assertThat(appender.list.get(0).getFormattedMessage())
-                .contains("ana@tripbus.co")
-                .doesNotContain(TOKEN);
-    }
-
-    @Test
-    void elTokenSoloApareceEnDebug() {
-        logger.setLevel(Level.DEBUG);
-
-        new LoggingEmailSender().enviarCorreoRecuperacion("ana@tripbus.co", TOKEN);
-
-        assertThat(appender.list)
-                .filteredOn(evento -> evento.getFormattedMessage().contains(TOKEN))
-                .singleElement()
-                .extracting(ILoggingEvent::getLevel)
-                .isEqualTo(Level.DEBUG);
-        assertThat(appender.list)
-                .filteredOn(evento -> evento.getLevel() == Level.INFO)
-                .allSatisfy(evento -> assertThat(evento.getFormattedMessage()).doesNotContain(TOKEN));
+        assertThat(appender.list).hasSize(4).allSatisfy(evento -> {
+            assertThat(evento.getLevel()).isEqualTo(Level.INFO);
+            assertThat(evento.getFormattedMessage()).contains("a***@tripbus.co")
+                    .doesNotContain("ana@tripbus.co").doesNotContain(TOKEN).doesNotContain("token=");
+        });
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                .anySatisfy(m -> assertThat(m).contains("recuperación"))
+                .anySatisfy(m -> assertThat(m).contains("bloqueo"))
+                .anySatisfy(m -> assertThat(m).contains("verificación"))
+                .anySatisfy(m -> assertThat(m).contains("cambio de contraseña"));
     }
 }

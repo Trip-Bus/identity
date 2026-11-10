@@ -1,5 +1,6 @@
 package com.tripbus.identity.model;
 
+import com.tripbus.identity.util.TextoBusqueda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,6 +8,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -28,7 +31,8 @@ public class Usuario {
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
-    @Column(name = "documento_identidad", nullable = false, unique = true)
+    /** Null solo en una cuenta eliminada y anonimizada (US-131). */
+    @Column(name = "documento_identidad", unique = true)
     private String documentoIdentidad;
 
     @Column(nullable = false)
@@ -55,7 +59,28 @@ public class Usuario {
     @Column(name = "password_changed_at")
     private Instant passwordChangedAt;
 
+    /** US-128: celular colombiano (10 dígitos empezando por 3); opcional. */
+    @Column(length = 10)
+    private String telefono;
+
+    /** US-130: no verificar el correo no bloquea el login; va en el claim emailVerificado. */
+    @Column(name = "email_verificado", nullable = false)
+    private boolean emailVerificado;
+
+    @Column(name = "email_verificado_en")
+    private Instant emailVerificadoEn;
+
+    /** US-102: nombre, email y documento sin mayúsculas ni tildes (ver TextoBusqueda). */
+    @Column(nullable = false, length = 600)
+    private String busqueda;
+
     protected Usuario() {
+    }
+
+    @PrePersist
+    @PreUpdate
+    void actualizarBusqueda() {
+        this.busqueda = TextoBusqueda.deUsuario(nombre, email, documentoIdentidad);
     }
 
     public Usuario(String email, String passwordHash, String documentoIdentidad, String nombre) {
@@ -139,5 +164,29 @@ public class Usuario {
 
     public void setPasswordChangedAt(Instant passwordChangedAt) {
         this.passwordChangedAt = passwordChangedAt;
+    }
+
+    public String getTelefono() {
+        return telefono;
+    }
+
+    public void setTelefono(String telefono) {
+        this.telefono = telefono;
+    }
+
+    public boolean isEmailVerificado() {
+        return emailVerificado;
+    }
+
+    public void setEmailVerificado(boolean emailVerificado) {
+        this.emailVerificado = emailVerificado;
+    }
+
+    public Instant getEmailVerificadoEn() {
+        return emailVerificadoEn;
+    }
+
+    public void setEmailVerificadoEn(Instant emailVerificadoEn) {
+        this.emailVerificadoEn = emailVerificadoEn;
     }
 }

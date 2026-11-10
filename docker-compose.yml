@@ -75,6 +75,9 @@ services:
       REDIS_PORT: 6379
       JWT_PRIVATE_KEY_PATH: /keys/private.pem
       JWT_PUBLIC_KEY_PATH: /keys/public.pem
+    # CATALOG_URL (en .env) apunta a host.docker.internal: en Linux hay que declararlo.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - jwt-keys:/keys:ro
     ports:

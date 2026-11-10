@@ -8,6 +8,12 @@ RUN mvn -B -q package -DskipTests
 
 # ---- Etapa 2: imagen de ejecución (solo JRE) ----
 FROM eclipse-temurin:21-jre-alpine
+# Parches de seguridad de Alpine más nuevos que los de la imagen base: Trivy falla con CRITICAL/HIGH que ya
+# tienen arreglo (p. ej. brotli-libs CVE-2026-111497, libexpat CVE-2026-113351). Se actualiza TODO, no
+# paquete por paquete. APK_CACHE_BUST: el CI pasa un valor por ejecución para que la caché de capas
+# (type=gha) no reutilice un "apk upgrade" viejo y la imagen salga con los parches ya publicados.
+ARG APK_CACHE_BUST=local
+RUN echo "apk upgrade: $APK_CACHE_BUST" && apk upgrade --no-cache
 RUN addgroup -S tripbus && adduser -S tripbus -G tripbus
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar

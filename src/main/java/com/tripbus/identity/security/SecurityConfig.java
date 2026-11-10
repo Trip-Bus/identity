@@ -1,7 +1,9 @@
 package com.tripbus.identity.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tripbus.identity.repository.SesionRevocadaRepository;
 import com.tripbus.identity.repository.UsuarioRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -10,6 +12,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -21,13 +24,16 @@ public class SecurityConfig {
     private final SesionRevocadaRepository sesionRevocadaRepository;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final String internalToken;
 
     public SecurityConfig(
             JwtKeyProvider jwtKeyProvider,
             UsuarioRepository usuarioRepository,
             SesionRevocadaRepository sesionRevocadaRepository,
             JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-            JwtAccessDeniedHandler jwtAccessDeniedHandler) {
+            JwtAccessDeniedHandler jwtAccessDeniedHandler,
+            @Value("${tripbus.internal-token}") String internalToken) {
+        this.internalToken = internalToken;
         this.jwtKeyProvider = jwtKeyProvider;
         this.usuarioRepository = usuarioRepository;
         this.sesionRevocadaRepository = sesionRevocadaRepository;
@@ -36,14 +42,19 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, PoliticaMfa politicaMfa,
+                                                   ObjectMapper objectMapper) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/refresh").permitAll()
+                        // US-106: segundo paso del login (lleva el mfaToken, todavía no hay JWT).
+                        .requestMatchers(HttpMethod.POST, "/auth/2fa").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
+                        // US-130: verificar con el token del correo es público; /resend exige sesión.
+                        .requestMatchers(HttpMethod.POST, "/auth/verify-email").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/info",
                                 "/actuator/prometheus").permitAll()
@@ -52,13 +63,19 @@ public class SecurityConfig {
                         .permitAll()
                         // Página de error de Spring Boot: sin esto, un 404 (ruta inexistente) se reporta como 401.
                         .requestMatchers("/error").permitAll()
+                        // Servicio a servicio: solo con X-Internal-Token válido (InternalTokenFilter).
+                        .requestMatchers("/internal/**").hasRole(InternalTokenFilter.INTERNAL_ROLE)
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(jwtAuthenticationEntryPoint)
                         .accessDeniedHandler(jwtAccessDeniedHandler))
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtKeyProvider, usuarioRepository, sesionRevocadaRepository),
-                        UsernamePasswordAuthenticationFilter.class);
+                        UsernamePasswordAuthenticationFilter.class)
+                // Misma posición que el filtro JWT y agregado después: corre después de él.
+                .addFilterBefore(new InternalTokenFilter(internalToken), UsernamePasswordAuthenticationFilter.class)
+                // US-106: con el usuario ya autenticado y antes de autorizar la ruta.
+                .addFilterBefore(new MfaObligatoriaFilter(politicaMfa, objectMapper), AuthorizationFilter.class);
 
         return http.build();
     }

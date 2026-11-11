@@ -57,7 +57,7 @@ class ObservabilidadTests {
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(metricas)
-                .contains("tripbus_logins_total{application=\"identity\",resultado=\"credenciales_invalidas\"}")
+                .contains("tripbus_logins_total{application=\"identity\",proveedor=\"password\",resultado=\"credenciales_invalidas\"}")
                 .contains("tripbus_refresh_total{application=\"identity\",resultado=\"invalid_refresh_token\"}");
     }
 

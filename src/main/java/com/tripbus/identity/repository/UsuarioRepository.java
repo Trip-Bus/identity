@@ -19,6 +19,8 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID>, JpaSpec
     @Query("select count(u) > 0 from Usuario u where lower(u.email) = lower(:email)")
     boolean existsByEmail(@Param("email") String email);
 
+    Optional<Usuario> findByGoogleSub(String googleSub);
+
     boolean existsByDocumentoIdentidad(String documentoIdentidad);
 
     /** US-131: el único ADMIN activo no puede eliminar su cuenta. */

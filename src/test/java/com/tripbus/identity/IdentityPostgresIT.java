@@ -278,6 +278,41 @@ class IdentityPostgresIT extends IntegrationContainers {
         }
     }
 
+    /** Login con Google: password_hash pasa a ser opcional y google_sub es único (varios null sí caben). */
+    @Test
+    void migracionV13PermiteCuentasSinContrasenaYGoogleSubUnico() throws Exception {
+        String esquema = "v13_google";
+        flywayEnEsquema(esquema, "12").migrate();
+        try (Connection c = conexion(); Statement s = c.createStatement()) {
+            s.executeUpdate("INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad,"
+                    + " nombre, fecha_creacion, fecha_actualizacion, busqueda) VALUES ('" + UUID.randomUUID()
+                    + "', 'antes@mail.com', 'hash', 'CC-V13-1', 'V13', now(), now(), 'v13')");
+        }
+        flywayEnEsquema(esquema, "13").migrate();
+
+        String insertar = "INSERT INTO " + esquema + ".usuarios (id, email, password_hash, documento_identidad, nombre,"
+                + " fecha_creacion, fecha_actualizacion, busqueda, google_sub) VALUES (?, ?, NULL, ?, 'V13', now(), now(),"
+                + " 'v13', ?)";
+        try (Connection c = conexion(); PreparedStatement ps = c.prepareStatement(insertar)) {
+            ps.setObject(1, UUID.randomUUID());
+            ps.setString(2, "google@mail.com");
+            ps.setString(3, "CC-V13-2");
+            ps.setString(4, "sub-1");
+            assertThat(ps.executeUpdate()).isEqualTo(1);
+
+            ps.setObject(1, UUID.randomUUID());
+            ps.setString(2, "otro@mail.com");
+            ps.setString(3, "CC-V13-3");
+            assertThatThrownBy(ps::executeUpdate).isInstanceOf(SQLException.class)
+                    .hasMessageContaining("uq_usuarios_google_sub");
+        }
+        try (Connection c = conexion(); Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT google_sub FROM " + esquema + ".usuarios WHERE email = 'antes@mail.com'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).isNull();
+        }
+    }
+
     private static Flyway flywayEnEsquema(String esquema, String version) {
         return Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())

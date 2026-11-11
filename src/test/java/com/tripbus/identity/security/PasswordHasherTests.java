@@ -46,6 +46,11 @@ class PasswordHasherTests {
     }
 
     @Test
+    void matchesReturnsFalseForAnAccountWithoutPassword() {
+        assertThat(passwordHasher.matches("S3guridad-TripBus!", null)).isFalse();
+    }
+
+    @Test
     void hashNeverContainsTheOriginalPasswordInPlainText() {
         String rawPassword = "S3guridad-TripBus!";
 

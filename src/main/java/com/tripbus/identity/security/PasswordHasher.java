@@ -16,7 +16,8 @@ public class PasswordHasher {
         return argon2PasswordEncoder.encode(rawPassword);
     }
 
+    /** Una cuenta sin contraseña (creada con Google) nunca coincide. */
     public boolean matches(String rawPassword, String encodedHash) {
-        return argon2PasswordEncoder.matches(rawPassword, encodedHash);
+        return encodedHash != null && argon2PasswordEncoder.matches(rawPassword, encodedHash);
     }
 }

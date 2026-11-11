@@ -125,3 +125,8 @@ tripbus:
       encryption-key: ${MFA_ENCRYPTION_KEY:}
       # Roles que deben activar la 2FA antes de usar la API (p. ej. ADMIN o ADMIN,OPERADOR).
       required-roles: ${MFA_REQUIRED_ROLES:}
+    # Inicio de sesión con Google (POST /auth/google). Vacío = apagado (404 GOOGLE_LOGIN_DISABLED y
+    # GET /auth/providers responde google.enabled = false). Es el Client ID web de Google Cloud (público).
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      jwks-uri: ${GOOGLE_JWKS_URI:https://www.googleapis.com/oauth2/v3/certs}

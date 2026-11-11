@@ -28,8 +28,13 @@ public class Usuario {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(name = "password_hash", nullable = false)
+    /** Null en una cuenta creada con Google que aún no define contraseña (V13). */
+    @Column(name = "password_hash")
     private String passwordHash;
+
+    /** Claim "sub" del ID token de Google de la cuenta vinculada; null si nunca entró con Google. */
+    @Column(name = "google_sub", unique = true)
+    private String googleSub;
 
     /** Null solo en una cuenta eliminada y anonimizada (US-131). */
     @Column(name = "documento_identidad", unique = true)
@@ -188,5 +193,13 @@ public class Usuario {
 
     public void setEmailVerificadoEn(Instant emailVerificadoEn) {
         this.emailVerificadoEn = emailVerificadoEn;
+    }
+
+    public String getGoogleSub() {
+        return googleSub;
+    }
+
+    public void setGoogleSub(String googleSub) {
+        this.googleSub = googleSub;
     }
 }

@@ -105,7 +105,11 @@ public class AuthService {
      * sino el mfaToken del segundo paso ({@link #completarSegundoPaso}).
      */
     public ResultadoLogin iniciarSesion(LoginRequest request) {
-        Usuario usuario = verificarCredenciales(request);
+        return resultadoDe(verificarCredenciales(request));
+    }
+
+    /** Usuario ya autenticado (contraseña o Google): con la 2FA activa, el desafío; si no, los tokens. */
+    ResultadoLogin resultadoDe(Usuario usuario) {
         if (mfa != null && mfa.activa(usuario.getId())) {
             return ResultadoLogin.conSegundoPaso(mfa.emitirDesafio(usuario.getId()));
         }
@@ -142,6 +146,11 @@ public class AuthService {
             throw new CredencialesInvalidasException();
         }
 
+        if (usuario.getPasswordHash() == null) {
+            // Cuenta creada con Google que aún no tiene contraseña: misma respuesta y mismo costo
+            // que una contraseña incorrecta (matches da false sin calcular Argon2).
+            passwordHasher.hash(request.password());
+        }
         if (!passwordHasher.matches(request.password(), usuario.getPasswordHash())) {
             fallarLogin(request.email(), usuario);
             throw new CredencialesInvalidasException();

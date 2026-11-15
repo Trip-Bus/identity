@@ -51,6 +51,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/auth/register", "/auth/login", "/auth/refresh").permitAll()
                         // US-106: segundo paso del login (lleva el mfaToken, todavía no hay JWT).
                         .requestMatchers(HttpMethod.POST, "/auth/2fa").permitAll()
+                        // Login con Google (lleva el ID token de Google) y qué proveedores están encendidos.
+                        .requestMatchers(HttpMethod.POST, "/auth/google").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/auth/providers").permitAll()
                         .requestMatchers(HttpMethod.POST,
                                 "/auth/password-reset/request", "/auth/password-reset/confirm").permitAll()
                         // US-130: verificar con el token del correo es público; /resend exige sesión.

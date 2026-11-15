@@ -16,6 +16,8 @@ servicio que emite JWT (RS256) y el único que maneja contraseñas (Argon2id).
 | POST | `/auth/register` | Crea cuenta PASAJERO. Exige `aceptaPoliticaDatos: true` (Ley 1581) → 201 + JWT. Envía el correo de verificación (US-130). |
 | POST | `/auth/login` | Access token (60 min por defecto) y refresh token (14 días). Tras 5 fallos por email normalizado en 15 min, bloquea 15 min. No exige el correo verificado. Si la cuenta tiene la verificación en dos pasos activa responde 200 `{mfaRequired: true, mfaToken}` **sin tokens** (US-106). |
 | POST | `/auth/2fa` | Público (US-106): segundo paso del login. `{mfaToken, code}` (código de 6 dígitos de la app) o `{mfaToken, recoveryCode}` → 200 con los mismos tokens del login. El `mfaToken` sirve una vez y vence en 5 min; 5 códigos fallidos lo invalidan. Errores: 401 `INVALID_MFA_CODE` (código incorrecto, vencido o ya usado) o `MFA_TOKEN_INVALID`. |
+| GET | `/auth/providers` | Público: `{"google": {"enabled": bool, "clientId": "…"}}` para que el frontend sepa si muestra el botón de Google. Sin `GOOGLE_CLIENT_ID`, `enabled: false` y `clientId: null`. Ver [Inicio de sesión con Google](#inicio-de-sesión-con-google). |
+| POST | `/auth/google` | Público: `{idToken, aceptaPoliticaDatos?, documentoIdentidad?, nombre?}` con el ID token de Google Identity Services → responde como `/auth/login` (200 con tokens, o `{mfaRequired, mfaToken}` si la cuenta tiene 2FA) o 201 si crea la cuenta. Errores: 401 `GOOGLE_TOKEN_INVALID`, 404 `GOOGLE_LOGIN_DISABLED`, 422 `GOOGLE_REGISTRO_INCOMPLETO` y los mismos del login (`ACCOUNT_SUSPENDED`, `ACCOUNT_LOCKED`). |
 | POST | `/auth/refresh` | Público: `{refreshToken}` rota el refresh token y emite un access token con rol, `companyId` y `emailVerificado` actuales. |
 | POST | `/auth/logout` | Revoca el token actual (claim `jti`) y la familia del refresh token; admite `{refreshToken}` opcional. Sin body, revoca refresh tokens de esa cuenta creados antes del access token. |
 | GET/POST | `/auth/validate` | Valida un JWT (lo usa el API Gateway). Headers `X-User-Id`, `X-User-Role`. Rechaza (401) los tokens emitidos antes del último cambio de contraseña. |
@@ -58,6 +60,33 @@ el frontend bajo el mismo dominio (Sprint 5), podrá migrarse a una cookie `Http
 
 Las familias se revocan al cerrar sesión, cambiar o restablecer la contraseña y suspender la cuenta. Un job diario
 elimina refresh tokens vencidos hace más de siete días.
+
+### Inicio de sesión con Google
+
+Google Identity Services con el flujo de ID token (sin client secret). Se activa con `GOOGLE_CLIENT_ID`
+(el Client ID web de Google Cloud, `xxxx.apps.googleusercontent.com`, que es público); vacío = apagado.
+
+1. El frontend llama `GET /auth/providers`; si `google.enabled`, muestra el botón con `google.clientId`.
+2. Con la credencial (ID token) que entrega Google llama `POST /auth/google {idToken}`.
+3. identity verifica el token con las llaves públicas de Google (`https://www.googleapis.com/oauth2/v3/certs`,
+   en caché el tiempo que diga `Cache-Control`): firma RS256, `iss` = `accounts.google.com` o
+   `https://accounts.google.com`, `aud` = `GOOGLE_CLIENT_ID`, `exp` vigente (60 s de tolerancia) y
+   `email_verified = true`. Si algo falla → 401 `GOOGLE_TOKEN_INVALID` (el motivo solo va al log).
+4. Busca la cuenta:
+   - con ese `sub` de Google → inicia sesión;
+   - si no, con el mismo correo (normalizado) → la vincula (`usuarios.google_sub`), deja el correo verificado e
+     inicia sesión. Si ese correo ya está vinculado a **otra** cuenta de Google → 409 `GOOGLE_ACCOUNT_CONFLICT`;
+   - si no existe → crea un PASAJERO con el correo verificado y **sin contraseña**, siempre que vengan
+     `aceptaPoliticaDatos: true` y `documentoIdentidad` (`nombre` es opcional: si no, el de Google). Si faltan →
+     422 `GOOGLE_REGISTRO_INCOMPLETO` con `details {email, nombre}` del token para precargar el formulario; el
+     frontend repite la llamada con el mismo `idToken` (mientras no venza) y los datos. El consentimiento y el
+     evento `UserRegistered` quedan igual que en `/auth/register`.
+5. Mismas reglas que el login: cuenta suspendida → 403 `ACCOUNT_SUSPENDED`; bloqueada → 423 `ACCOUNT_LOCKED`; con
+   2FA → `{mfaRequired, mfaToken}` y se completa en `POST /auth/2fa`.
+
+Una cuenta creada con Google no tiene contraseña: `POST /auth/login` le responde 401 `INVALID_CREDENTIALS`
+(igual que una contraseña incorrecta). Puede definir una con `/auth/password-reset/request`. Si Google no responde
+y no hay llaves en caché → 503 `GOOGLE_UNAVAILABLE`.
 
 ### Política de datos personales (Ley 1581)
 
@@ -291,6 +320,7 @@ Correo (opcionales en todos los entornos, mismas variables que booking):
 | `IDENTITY_LOGIN_LOCKOUT` | `15m` | Duración del bloqueo de login. |
 | `IDENTITY_REFRESH_TTL` | `14d` | Vigencia del refresh token. |
 | `MFA_REQUIRED_ROLES` | vacío | Roles que deben activar la 2FA antes de usar la API (`ADMIN`, `ADMIN,OPERADOR`). |
+| `GOOGLE_CLIENT_ID` | vacío | Client ID web de Google para `POST /auth/google`. Vacío = inicio de sesión con Google apagado (404 `GOOGLE_LOGIN_DISABLED`, `GET /auth/providers` → `enabled: false`). |
 
 Observabilidad (opcionales en todos los entornos):
 
@@ -339,8 +369,8 @@ Para probar endpoints protegidos: haz login en `/auth/login` y pega el `accessTo
 
 | Métrica | Etiquetas | Qué cuenta |
 |---|---|---|
-| `tripbus_logins_total` | `resultado`: `exito`, `credenciales_invalidas`, `cuenta_bloqueada`, `cuenta_suspendida`, `mfa_requerida`, `mfa_invalida` | Intentos de login y del segundo paso. |
-| `tripbus_registros_total` | — | Cuentas creadas con `/auth/register`. |
+| `tripbus_logins_total` | `resultado`: `exito`, `credenciales_invalidas`, `cuenta_bloqueada`, `cuenta_suspendida`, `mfa_requerida`, `mfa_invalida`, `token_invalido`, `registro_incompleto` · `proveedor`: `password`, `google`, `2fa` | Intentos de login (`/auth/login`, `/auth/google`) y del segundo paso (`/auth/2fa`). |
+| `tripbus_registros_total` | `proveedor`: `password`, `google` | Cuentas creadas con `/auth/register` o `/auth/google`. |
 | `tripbus_cuentas_bloqueadas_total` | — | Bloqueos por intentos fallidos (US-126). |
 | `tripbus_refresh_total` | `resultado`: `exito`, `invalid_refresh_token`, `refresh_token_reused`, `account_suspended` | Renovaciones de sesión. |
 
@@ -354,7 +384,7 @@ mvn -B verify      # unitarias + H2 + integración con PostgreSQL real (Testcont
   surefire en la fase `test`.
 - `*IT`: corren con failsafe en la fase `integration-test` (Testcontainers: Docker abierto), separadas
   de las unitarias para que su JVM y su caché de contextos de Spring no convivan en el mismo fork.
-  Las cinco comparten un único Postgres y un único Redis ("singleton containers", ver
+  Las seis comparten un único Postgres y un único Redis ("singleton containers", ver
   `IntegrationContainers`) en vez de uno por clase, para no agotar la RAM del host.
 - `IdentityPostgresIT`: levanta PostgreSQL 16 con Testcontainers y corre las migraciones Flyway reales.
 - `RevocacionRedisIT` y `GestionUsuariosIT`: PostgreSQL y Redis reales; `GestionUsuariosIT` simula
@@ -363,6 +393,10 @@ mvn -B verify      # unitarias + H2 + integración con PostgreSQL real (Testcont
   recuperación y aviso, clave `tripbus:pwd-changed:*` y tokens viejos rechazados (US-125, US-128 a US-130).
 - `DatosAuditoriaYDosPasosIT`: PostgreSQL y Redis reales: migraciones V10 a V12 (`jsonb`), eliminar cuenta con la
   clave `tripbus:suspended:*` y el evento `UserDeleted`, auditoría y login en dos pasos (US-105, US-106, US-131).
+- `GoogleLoginIT` (PostgreSQL y Redis reales) y `GoogleLoginControllerTests` (H2): login con Google con un emisor
+  falso (`GoogleFalso`: llaves RSA propias y JWKS en un servidor HTTP local, `GOOGLE_JWKS_URI`); nunca se llama
+  a Google. Cubren token válido, firma/`aud`/`exp`/`email_verified` inválidos, cuenta por `sub`, vinculación por
+  correo, registro incompleto (422) y completo, 2FA, suspensión, bloqueo y función apagada.
 - `ObservabilidadTests` / `ExportadorOtlpTests`: métricas en `/actuator/prometheus` y trazas apagadas sin
   `OTEL_EXPORTER_OTLP_ENDPOINT` (encendidas con él). `TotpTest` usa los vectores de prueba de la RFC 6238.
 
@@ -382,10 +416,10 @@ Toda la plataforma: ver el README de **API-gateway**.
 `mvn verify` falla si la cobertura total baja de los mínimos del `pom.xml`, en **todas** las ramas
 (también en `main`, donde Sonar no corre):
 
-| Métrica | Medido (2026-10-28) | Mínimo |
+| Métrica | Medido (2026-11-11) | Mínimo |
 |---|---|---|
-| Líneas | 96,5 % | `jacoco.minimo.lineas` = 0.95 |
-| Ramas | 87,1 % | `jacoco.minimo.ramas` = 0.85 |
+| Líneas | 97,8 % | `jacoco.minimo.lineas` = 0.95 |
+| Ramas | 92,9 % | `jacoco.minimo.ramas` = 0.90 |
 
 **La cobertura nunca puede bajar: si agregas pruebas, sube el mínimo.** Corre `mvn verify`, mira
 el total en `target/site/jacoco/index.html` (o la tabla del CI), redondéalo hacia abajo al 5 % y

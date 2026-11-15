@@ -12,13 +12,13 @@ class MetricasIdentityTest {
 
     @Test
     void cuentaLoginsYRefreshPorResultado() {
-        metricas.login(MetricasIdentity.EXITO);
-        metricas.login(MetricasIdentity.EXITO);
-        metricas.login(MetricasIdentity.CREDENCIALES_INVALIDAS);
+        metricas.login(MetricasIdentity.EXITO, MetricasIdentity.PROVEEDOR_PASSWORD);
+        metricas.login(MetricasIdentity.EXITO, MetricasIdentity.PROVEEDOR_PASSWORD);
+        metricas.login(MetricasIdentity.CREDENCIALES_INVALIDAS, MetricasIdentity.PROVEEDOR_GOOGLE);
         metricas.renovacionSesion("refresh_token_reused");
 
         assertThat(registry.get(MetricasIdentity.LOGINS).tag("resultado", "exito").counter().count()).isEqualTo(2.0);
-        assertThat(registry.get(MetricasIdentity.LOGINS).tag("resultado", "credenciales_invalidas").counter().count())
+        assertThat(registry.get(MetricasIdentity.LOGINS).tag("resultado", "credenciales_invalidas").tag("proveedor", "google").counter().count())
                 .isEqualTo(1.0);
         assertThat(registry.get(MetricasIdentity.REFRESH).tag("resultado", "refresh_token_reused").counter().count())
                 .isEqualTo(1.0);
@@ -26,11 +26,11 @@ class MetricasIdentityTest {
 
     @Test
     void cuentaRegistrosYBloqueos() {
-        metricas.registro();
+        metricas.registro(MetricasIdentity.PROVEEDOR_GOOGLE);
         metricas.cuentaBloqueada();
         metricas.cuentaBloqueada();
 
-        assertThat(registry.get(MetricasIdentity.REGISTROS).counter().count()).isEqualTo(1.0);
+        assertThat(registry.get(MetricasIdentity.REGISTROS).tag("proveedor", "google").counter().count()).isEqualTo(1.0);
         assertThat(registry.get(MetricasIdentity.CUENTAS_BLOQUEADAS).counter().count()).isEqualTo(2.0);
     }
 }

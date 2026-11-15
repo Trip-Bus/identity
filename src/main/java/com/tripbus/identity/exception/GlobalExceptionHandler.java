@@ -144,4 +144,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("TOKEN_INVALID_OR_EXPIRED", ex.getMessage()));
     }
+
+    @ExceptionHandler(GoogleTokenInvalidoException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleTokenInvalido(GoogleTokenInvalidoException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("GOOGLE_TOKEN_INVALID", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GoogleLoginDesactivadoException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleLoginDesactivado(GoogleLoginDesactivadoException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("GOOGLE_LOGIN_DISABLED", ex.getMessage()));
+    }
+
+    /** details {email, nombre} del token para precargar el formulario de registro (nombre puede ser null). */
+    @ExceptionHandler(GoogleRegistroIncompletoException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleRegistroIncompleto(GoogleRegistroIncompletoException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("email", ex.getEmail());
+        details.put("nombre", ex.getNombre());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ErrorResponse.of("GOOGLE_REGISTRO_INCOMPLETO", ex.getMessage(), details));
+    }
+
+    @ExceptionHandler(GoogleCuentaVinculadaException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleCuentaVinculada(GoogleCuentaVinculadaException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("GOOGLE_ACCOUNT_CONFLICT", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GoogleNoDisponibleException.class)
+    public ResponseEntity<ErrorResponse> handleGoogleNoDisponible(GoogleNoDisponibleException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.of("GOOGLE_UNAVAILABLE", ex.getMessage()));
+    }
 }

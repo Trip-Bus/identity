@@ -1,8 +1,11 @@
 package com.tripbus.identity.controller;
 
 import com.tripbus.identity.dto.AuthResponse;
+import com.tripbus.identity.dto.GoogleLoginRequest;
 import com.tripbus.identity.dto.LoginRequest;
 import com.tripbus.identity.dto.MfaLoginRequest;
+import com.tripbus.identity.dto.MfaRequeridoResponse;
+import com.tripbus.identity.dto.ProveedoresResponse;
 import com.tripbus.identity.dto.RefreshRequest;
 import com.tripbus.identity.dto.LogoutRequest;
 import com.tripbus.identity.dto.RegistroRequest;
@@ -12,18 +15,33 @@ import com.tripbus.identity.events.IdentityEventPublisher;
 import com.tripbus.identity.exception.CredencialesInvalidasException;
 import com.tripbus.identity.exception.CuentaBloqueadaException;
 import com.tripbus.identity.exception.CuentaSuspendidaException;
+import com.tripbus.identity.exception.ErrorResponse;
+import com.tripbus.identity.exception.GoogleRegistroIncompletoException;
+import com.tripbus.identity.exception.GoogleTokenInvalidoException;
 import com.tripbus.identity.exception.MfaException;
 import com.tripbus.identity.exception.RefreshTokenException;
+import com.tripbus.identity.model.RolUsuario;
+import com.tripbus.identity.model.Usuario;
 import com.tripbus.identity.observabilidad.MetricasIdentity;
+import com.tripbus.identity.security.GoogleIdTokenVerifier;
 import com.tripbus.identity.security.UsuarioAutenticado;
 import com.tripbus.identity.service.AuthService;
+import com.tripbus.identity.service.GoogleAuthService;
 import com.tripbus.identity.service.SesionService;
 import com.tripbus.identity.service.RefreshTokenService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -36,37 +54,39 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final AuthService authService;
     private final SesionService sesionService;
     private final IdentityEventPublisher events;
     private final RefreshTokenService refreshTokens;
     private final MetricasIdentity metricas;
+    private final GoogleAuthService googleAuth;
+    private final GoogleIdTokenVerifier google;
 
     public AuthController(AuthService authService, SesionService sesionService, IdentityEventPublisher events,
-                          RefreshTokenService refreshTokens, MetricasIdentity metricas) {
+                          RefreshTokenService refreshTokens, MetricasIdentity metricas,
+                          GoogleAuthService googleAuth, GoogleIdTokenVerifier google) {
         this.authService = authService;
         this.sesionService = sesionService;
         this.events = events;
         this.refreshTokens = refreshTokens;
         this.metricas = metricas;
+        this.googleAuth = googleAuth;
+        this.google = google;
     }
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegistroRequest request) {
         AuthResponse response = authService.registrar(request);
         sesionService.registrarConsentimiento(response.userId());
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("userId", response.userId());
-        payload.put("email", request.email());
-        payload.put("role", response.rol());
-        payload.put("timestamp", Instant.now());
-        events.publish(IdentityEventPublisher.USER_REGISTERED, payload);
-        metricas.registro();
+        usuarioRegistrado(response.userId(), request.email(), response.rol(), MetricasIdentity.PROVEEDOR_PASSWORD);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -76,25 +96,56 @@ public class AuthController {
      */
     @PostMapping("/login")
     public ResponseEntity<Object> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
-        ResultadoLogin resultado;
-        try {
-            resultado = authService.iniciarSesion(request);
-        } catch (CredencialesInvalidasException e) {
-            metricas.login(MetricasIdentity.CREDENCIALES_INVALIDAS);
-            throw e;
-        } catch (CuentaBloqueadaException e) {
-            metricas.login(MetricasIdentity.CUENTA_BLOQUEADA);
-            throw e;
-        } catch (CuentaSuspendidaException e) {
-            metricas.login(MetricasIdentity.CUENTA_SUSPENDIDA);
-            throw e;
+        ResultadoLogin resultado = medido(MetricasIdentity.PROVEEDOR_PASSWORD, () -> authService.iniciarSesion(request));
+        return responder(resultado, HttpStatus.OK, MetricasIdentity.PROVEEDOR_PASSWORD, http);
+    }
+
+    /** Qué proveedores externos de login están encendidos (el frontend decide si muestra el botón de Google). */
+    @Operation(summary = "Proveedores de inicio de sesión",
+            description = "Público. `google.enabled` es false si no hay GOOGLE_CLIENT_ID; `clientId` es el que "
+                    + "usa el botón de Google Identity Services (null si está apagado).")
+    @SecurityRequirements
+    @GetMapping("/providers")
+    public ProveedoresResponse proveedores() {
+        return new ProveedoresResponse(new ProveedoresResponse.Proveedor(google.habilitado(),
+                google.habilitado() ? google.clientId() : null));
+    }
+
+    /**
+     * Inicio de sesión con el ID token de Google. Responde como /auth/login (tokens, o el desafío de la 2FA);
+     * si la cuenta se crea en esta petición, 201 y el evento UserRegistered como /auth/register.
+     */
+    @Operation(summary = "Iniciar sesión con Google",
+            description = "Público. `{idToken}` es la credencial de Google Identity Services. Primera vez sin cuenta "
+                    + "con ese correo: además `aceptaPoliticaDatos: true` y `documentoIdentidad` (y `nombre` "
+                    + "opcional), o responde 422 GOOGLE_REGISTRO_INCOMPLETO con `details {email, nombre}`.")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "200", description = "Sesión iniciada (o `{mfaRequired, mfaToken}` con 2FA)",
+            content = @Content(schema = @Schema(oneOf = {AuthResponse.class, MfaRequeridoResponse.class})))
+    @ApiResponse(responseCode = "201", description = "Cuenta PASAJERO creada con Google y sesión iniciada",
+            content = @Content(schema = @Schema(implementation = AuthResponse.class)))
+    @ApiResponse(responseCode = "401", description = "GOOGLE_TOKEN_INVALID",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "403", description = "ACCOUNT_SUSPENDED",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "GOOGLE_LOGIN_DISABLED (sin GOOGLE_CLIENT_ID)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "DOCUMENTO_ALREADY_REGISTERED o GOOGLE_ACCOUNT_CONFLICT",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "422", description = "GOOGLE_REGISTRO_INCOMPLETO",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "423", description = "ACCOUNT_LOCKED (header Retry-After)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @PostMapping("/google")
+    public ResponseEntity<Object> loginGoogle(@Valid @RequestBody GoogleLoginRequest request, HttpServletRequest http) {
+        GoogleAuthService.Resultado resultado =
+                medido(MetricasIdentity.PROVEEDOR_GOOGLE, () -> googleAuth.iniciarSesion(request));
+        Usuario nuevo = resultado.registrado();
+        if (nuevo == null) {
+            return responder(resultado.login(), HttpStatus.OK, MetricasIdentity.PROVEEDOR_GOOGLE, http);
         }
-        if (resultado.mfa() != null) {
-            metricas.login(MetricasIdentity.MFA_REQUERIDA);
-            return ResponseEntity.ok(resultado.mfa());
-        }
-        sesionIniciada(resultado.tokens().userId(), http);
-        return ResponseEntity.ok(resultado.tokens());
+        usuarioRegistrado(nuevo.getId(), nuevo.getEmail(), nuevo.getRol(), MetricasIdentity.PROVEEDOR_GOOGLE);
+        return responder(resultado.login(), HttpStatus.CREATED, MetricasIdentity.PROVEEDOR_GOOGLE, http);
     }
 
     /** US-106: segundo paso del login con {@code {mfaToken, code}} o {@code {mfaToken, recoveryCode}}. */
@@ -105,15 +156,58 @@ public class AuthController {
         try {
             response = authService.completarSegundoPaso(request);
         } catch (MfaException e) {
-            metricas.login(MetricasIdentity.MFA_INVALIDA);
+            metricas.login(MetricasIdentity.MFA_INVALIDA, MetricasIdentity.PROVEEDOR_2FA);
             throw e;
         }
-        sesionIniciada(response.userId(), http);
+        sesionIniciada(response.userId(), MetricasIdentity.PROVEEDOR_2FA, http);
         return ResponseEntity.ok(response);
     }
 
-    private void sesionIniciada(UUID userId, HttpServletRequest http) {
-        metricas.login(MetricasIdentity.EXITO);
+    /** Cuenta en las métricas los rechazos del primer paso (contraseña o Google) y los relanza. */
+    private <T> T medido(String proveedor, Supplier<T> intento) {
+        try {
+            return intento.get();
+        } catch (CredencialesInvalidasException e) {
+            metricas.login(MetricasIdentity.CREDENCIALES_INVALIDAS, proveedor);
+            throw e;
+        } catch (CuentaBloqueadaException e) {
+            metricas.login(MetricasIdentity.CUENTA_BLOQUEADA, proveedor);
+            throw e;
+        } catch (CuentaSuspendidaException e) {
+            metricas.login(MetricasIdentity.CUENTA_SUSPENDIDA, proveedor);
+            throw e;
+        } catch (GoogleTokenInvalidoException e) {
+            log.info("ID token de Google rechazado: {}", e.getMotivo());
+            metricas.login(MetricasIdentity.TOKEN_INVALIDO, proveedor);
+            throw e;
+        } catch (GoogleRegistroIncompletoException e) {
+            metricas.login(MetricasIdentity.REGISTRO_INCOMPLETO, proveedor);
+            throw e;
+        }
+    }
+
+    private ResponseEntity<Object> responder(ResultadoLogin resultado, HttpStatus status, String proveedor,
+                                             HttpServletRequest http) {
+        if (resultado.mfa() != null) {
+            metricas.login(MetricasIdentity.MFA_REQUERIDA, proveedor);
+            return ResponseEntity.ok(resultado.mfa());
+        }
+        sesionIniciada(resultado.tokens().userId(), proveedor, http);
+        return ResponseEntity.status(status).body(resultado.tokens());
+    }
+
+    private void usuarioRegistrado(UUID userId, String email, RolUsuario rol, String proveedor) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("userId", userId);
+        payload.put("email", email);
+        payload.put("role", rol);
+        payload.put("timestamp", Instant.now());
+        events.publish(IdentityEventPublisher.USER_REGISTERED, payload);
+        metricas.registro(proveedor);
+    }
+
+    private void sesionIniciada(UUID userId, String proveedor, HttpServletRequest http) {
+        metricas.login(MetricasIdentity.EXITO, proveedor);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("userId", userId);
         payload.put("timestamp", Instant.now());

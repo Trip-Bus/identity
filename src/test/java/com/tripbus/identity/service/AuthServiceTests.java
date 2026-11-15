@@ -156,6 +156,17 @@ class AuthServiceTests {
     }
 
     @Test
+    void loginDeUnaCuentaSinContrasenaRespondeComoCredencialesInvalidas() {
+        LoginRequest request = new LoginRequest("google@tripbus.com", "Passw0rd!");
+        Usuario usuario = mock(Usuario.class);
+        when(usuario.getPasswordHash()).thenReturn(null);
+        when(usuarioRepository.findByEmail(request.email())).thenReturn(Optional.of(usuario));
+
+        assertThatThrownBy(() -> authService.login(request)).isInstanceOf(CredencialesInvalidasException.class);
+        verify(passwordHasher).hash("Passw0rd!"); // mismo costo que una contraseña incorrecta
+    }
+
+    @Test
     void registroYLoginNormalizanElEmailAMinusculasSinEspacios() {
         assertThat(new RegistroRequest("  Ana@Mail.COM ", "Passw0rd!", "CC-1", "Ana").email())
                 .isEqualTo("ana@mail.com");

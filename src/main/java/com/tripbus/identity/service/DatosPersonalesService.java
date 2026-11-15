@@ -98,6 +98,7 @@ public class DatosPersonalesService {
         usuario.setNombre(NOMBRE_ELIMINADO);
         usuario.setDocumentoIdentidad(null);
         usuario.setTelefono(null);
+        usuario.setGoogleSub(null);
         usuario.setActivo(false);
         usuario.setEmailVerificado(false);
         usuario.setEmailVerificadoEn(null);

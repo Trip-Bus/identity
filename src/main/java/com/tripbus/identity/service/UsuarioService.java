@@ -3,6 +3,7 @@ package com.tripbus.identity.service;
 import com.tripbus.identity.client.CatalogClient;
 import com.tripbus.identity.dto.CambiarEstadoRequest;
 import com.tripbus.identity.dto.CambiarRolRequest;
+import com.tripbus.identity.dto.ConductorResponse;
 import com.tripbus.identity.dto.CrearUsuarioRequest;
 import com.tripbus.identity.dto.PageResponse;
 import com.tripbus.identity.dto.UsuarioInternoResponse;
@@ -35,6 +36,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -112,6 +114,19 @@ public class UsuarioService {
         Page<Usuario> resultado = usuarioRepository.findAll(UsuarioSpecs.filtrar(rol, companyId, activo, q), pagina);
         return new PageResponse<>(resultado.getContent().stream().map(UsuarioService::toResponse).toList(),
                 resultado.getNumber(), resultado.getSize(), resultado.getTotalElements(), resultado.getTotalPages());
+    }
+
+    /**
+     * US-121: conductores ACTIVOS de una empresa, por nombre, para asignarlos a un viaje. Con companyId null
+     * (solo el ADMIN) devuelve los de todas las empresas.
+     */
+    @Transactional(readOnly = true)
+    public List<ConductorResponse> conductores(UUID companyId) {
+        return usuarioRepository.findAll(UsuarioSpecs.filtrar(RolUsuario.CONDUCTOR, companyId, true, null),
+                        Sort.by("nombre", "id"))
+                .stream()
+                .map(u -> new ConductorResponse(u.getId(), u.getNombre(), u.getEmail()))
+                .toList();
     }
 
     /** US-105: queda en la auditoría con el rol y la empresa de antes y de después. */

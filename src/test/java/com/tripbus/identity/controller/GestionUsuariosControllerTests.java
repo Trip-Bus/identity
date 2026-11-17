@@ -388,4 +388,47 @@ class GestionUsuariosControllerTests {
         JsonNode json = objectMapper.readTree(body);
         assertThat(Instant.parse(json.get("fechaCreacion").asText())).isBeforeOrEqualTo(Instant.now());
     }
+
+    // ------------------------------------------------ US-121: conductores asignables
+
+    @Test
+    void operadorVeSoloLosConductoresActivosDeSuEmpresa() throws Exception {
+        UUID otraEmpresa = UUID.randomUUID();
+        Usuario operador = guardar("Olga Operadora", "operador@tripbus.co", "CC-OP", RolUsuario.OPERADOR, companyId, true);
+        guardar("Zoe Conductora", "zoe@tripbus.co", "CC-Z", RolUsuario.CONDUCTOR, companyId, true);
+        guardar("Ana Conductora", "ana@tripbus.co", "CC-A", RolUsuario.CONDUCTOR, companyId, true);
+        guardar("Inactivo", "inactivo@tripbus.co", "CC-I", RolUsuario.CONDUCTOR, companyId, false);
+        guardar("De Otra", "otra@tripbus.co", "CC-O", RolUsuario.CONDUCTOR, otraEmpresa, true);
+
+        mockMvc.perform(get("/users/drivers").param("companyId", otraEmpresa.toString())
+                        .header("Authorization", token(operador)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].nombre").value("Ana Conductora"))
+                .andExpect(jsonPath("$[1].email").value("zoe@tripbus.co"))
+                .andExpect(jsonPath("$[0].documentoIdentidad").doesNotExist());
+    }
+
+    @Test
+    void adminFiltraConductoresPorEmpresa() throws Exception {
+        guardar("Ana Conductora", "ana@tripbus.co", "CC-A", RolUsuario.CONDUCTOR, companyId, true);
+        guardar("De Otra", "otra@tripbus.co", "CC-O", RolUsuario.CONDUCTOR, UUID.randomUUID(), true);
+
+        mockMvc.perform(get("/users/drivers").param("companyId", companyId.toString())
+                        .header("Authorization", tokenAdmin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].email").value("ana@tripbus.co"));
+    }
+
+    @Test
+    void pasajeroYConductorNoListanConductores() throws Exception {
+        Usuario pasajero = guardar("Pedro", "pedro@tripbus.co", "CC-P", RolUsuario.PASAJERO, null, true);
+        Usuario conductor = guardar("Ana", "ana@tripbus.co", "CC-A", RolUsuario.CONDUCTOR, companyId, true);
+
+        mockMvc.perform(get("/users/drivers").header("Authorization", token(pasajero)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/users/drivers").header("Authorization", token(conductor)))
+                .andExpect(status().isForbidden());
+    }
 }

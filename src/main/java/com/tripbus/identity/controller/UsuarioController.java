@@ -2,6 +2,7 @@ package com.tripbus.identity.controller;
 
 import com.tripbus.identity.dto.CambiarEstadoRequest;
 import com.tripbus.identity.dto.CambiarRolRequest;
+import com.tripbus.identity.dto.ConductorResponse;
 import com.tripbus.identity.dto.CrearUsuarioRequest;
 import com.tripbus.identity.dto.PageResponse;
 import com.tripbus.identity.dto.RolesResponse;
@@ -50,6 +51,22 @@ public class UsuarioController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(usuarioService.listar(rol, companyId, activo, q, page, size));
+    }
+
+    /**
+     * US-121: conductores activos que se pueden asignar a un viaje. El OPERADOR solo ve los de su empresa
+     * (se ignora companyId); el ADMIN puede filtrar por companyId.
+     */
+    @GetMapping("/drivers")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERADOR')")
+    public ResponseEntity<List<ConductorResponse>> conductores(
+            @RequestParam(required = false) UUID companyId,
+            @AuthenticationPrincipal UsuarioAutenticado actual) {
+        UUID empresa = actual.rol() == RolUsuario.ADMIN ? companyId : actual.companyId();
+        if (empresa == null && actual.rol() != RolUsuario.ADMIN) {
+            return ResponseEntity.ok(List.of());
+        }
+        return ResponseEntity.ok(usuarioService.conductores(empresa));
     }
 
     /** US-103: crear un OPERADOR o CONDUCTOR (ADMIN). La persona define su contraseña con el enlace enviado. */
